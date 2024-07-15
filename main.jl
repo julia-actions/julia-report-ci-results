@@ -60,7 +60,7 @@ function compress_profile_lists(profiles)
     @groupby({_.os, _.version}) |>
     @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
     @groupby({_.os}) |>
-    @map(key(_).os * join(_.version, ", ")) |>
+    @map(key(_).os * " (" * join(_.version, ", ") * ")") |>
     collect
     
     return join(asdf, ", ")
@@ -132,7 +132,7 @@ for ti in grouped_testitems
             collect
 
         for i in grouped_by_status
-            println(o, "#### $(i.status) on $(compress_profile_lists(map(j->escape_markdown(j.profile_name), i.profiles)))")
+            println(o, "#### $(i.status) on $(escape_markdown(compress_profile_lists(map(j->j.profile_name, i.profiles))))")
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
