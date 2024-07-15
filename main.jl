@@ -94,7 +94,9 @@ for ti in grouped_testitems
             if tp.messages!==missing
                 for msg in tp.messages
                     println(o, "##### $(msg.uri):$(msg.line)")
+                    println(o, "```")
                     println(o, msg.message)
+                    println(o, "```")
                 end
             end
         end
