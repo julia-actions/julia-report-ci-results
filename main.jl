@@ -38,16 +38,16 @@ results = TestrunResult(
     ]
 )
 
-sb = StringBuilder()
+o = IOBuffer()
 
-append!(sb, "# Test summary")
-append!(sb, "$(length(results.testitems)) testitems were run.")
-append!(sb, "## Detailed testitem output")
+println(o, "# Test summary")
+println(o, "$(length(results.testitems)) testitems were run.")
+println(o, "## Detailed testitem output")
 for ti in results.testitems
-    append!(sb, "### $(ti.name) in $(ti.uri)")
+    println(o, "### $(ti.name) in $(ti.uri)")
     for tp in ti.profiles
-        append!(sb, "Result on $(tp.profile_name) is $(tp.status)")
+        println(o, "Result on $(tp.profile_name) is $(tp.status)")
     end
 end
 
-add_to_file("GITHUB_STEP_SUMMARY", String(sb))
+add_to_file("GITHUB_STEP_SUMMARY", String(take!(o)))

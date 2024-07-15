@@ -81,7 +81,7 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.GitHubActions]]
 deps = ["JSON", "Logging"]
-git-tree-sha1 = "8750718611144f23584ca265d899baa1bf1a4531"
+path = "C:\\Users\\david\\.julia\\dev\\GitHubActions"
 uuid = "6b79fd1a-b13a-48ab-b6b0-aaee1fee41df"
 version = "0.1.7"
 
