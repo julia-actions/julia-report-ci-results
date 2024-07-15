@@ -53,9 +53,9 @@ function escape_markdown(s)
     return replace(s, "-" => "\\-", "~" => "\\~")
 end
 
-for i in json_files_content
-    JSON.print(i)
-end
+# for i in json_files_content
+#     JSON.print(i)
+# end
 
 results = TestrunResult(
     TestrunResultDefinitionError[],
@@ -88,14 +88,14 @@ results = TestrunResult(
     ]
 )
 
-println(results)
+# println(results)
 
 grouped_testitems = results.testitems |>
 @groupby({_.name, uri=convert_to_uri(_.uri)}) |>
 @map(TestrunResultTestitem(key(_).name, key(_).uri, [(_.profiles)...;])) |>
 collect
 
-println(grouped_testitems)
+# println(grouped_testitems)
 
 o = IOBuffer()
 
@@ -114,6 +114,7 @@ for ti in grouped_testitems
             collect
 
         for i in grouped_by_status
+            println("WE GET THIS ", i)
             println(o, "#### $(i.status) on $(join(map(j->escape_markdown(j.profile_name)), i.profiles, ", "))")
 
             deduplicated_messages = i.profiles |>
