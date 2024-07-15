@@ -61,7 +61,7 @@ results = TestrunResult(
 
 grouped_testitems = results.testitems |>
 @groupby({_.name, uri=convert_to_uri(_.uri)}) |>
-@map(TestrunResultTestitem(key(_).name, key(_).uri, [_...;])) |>
+@map(TestrunResultTestitem(key(_).name, key(_).uri, [(_.profiles)...;])) |>
 collect
 
 o = IOBuffer()
