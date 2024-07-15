@@ -115,18 +115,17 @@ for ti in grouped_testitems
             collect
 
         for i in grouped_by_status
-            println("WE GET THIS ", i)
             println(o, "#### $(i.status) on $(join(map(j->escape_markdown(j.profile_name), i.profiles), ", "))")
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
                 @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
                 @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
-                @map({key(_)...}) |>
+                @map({key(_)..., profile_names=_.profile_name}) |>
                 collect
             
             for msg in deduplicated_messages
-                println(o, "##### $(msg.uri):$(msg.line)")
+                println(o, "##### $(msg.uri):$(msg.line) on $(join(msg.profile_names, ", "))")
                 println(o, "```")
                 println(o, msg.message)
                 println(o, "```")
