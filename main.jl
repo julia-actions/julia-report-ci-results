@@ -136,8 +136,9 @@ println(lint_results)
 println(o, "# Lint summary")
 println(o, "$(length(lint_results)) lint messages were generated.")
 for diag in lint_results
-    path = convert_to_uri(diag["uri"]).path
-    github_uri = github_uri_from_uri(diag["uri"], diag["line"])
+    uri = URI(diag["uri"])
+    path = convert_to_uri(uri).path
+    github_uri = github_uri_from_uri(uri, diag["line"])
 
     println(o, "## $(diag["severity"]) [$path:$(diag["line"])]($github_uri) from $(diag["source"])")
     println(o, "`$(diag["message"])`")
