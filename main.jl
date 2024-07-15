@@ -60,7 +60,7 @@ function compress_profile_lists(profiles)
     @groupby({_.os, _.version}) |>
     @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
     @groupby({_.os}) |>
-    @map("$(key(_).os) ($join(_.version, ", "))") |>
+    @map(key(_).os * join(_.version, ", ")) |>
     collect
     
     return join(asdf, ", ")
