@@ -127,7 +127,7 @@ for ti in grouped_testitems
     println(o, "### `$(ti.name)` in $(ti.uri.path)")
 
     if all(tp->tp.status==:passed, ti.profiles)
-        println(o, "Passed on all platforms ($(join(map(i->escape_markdown(i.profile_name), ti.profiles), ", "))).")
+        println(o, "Passed on all platforms $(escape_markdown(compress_profile_lists(map(j->j.profile_name, ti.profiles)))).")
     else
         grouped_by_status = ti.profiles |>
             @groupby({_.status}) |>
