@@ -126,7 +126,7 @@ for ti in grouped_testitems
                 collect
             
             for msg in deduplicated_messages
-                github_uri = URI("https", nothing, "github.com/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)#L$(msg.line)", nothing, nothing)
+                github_uri = URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)", nothing, "L$(msg.line)")
                 println(github_uri)
                 println(o, "##### $github_uri on $(join(escape_markdown.(msg.profile_names), ", "))")
                 println(o, "```")
