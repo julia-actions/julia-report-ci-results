@@ -125,7 +125,7 @@ for ti in grouped_testitems
                 collect
             
             for msg in deduplicated_messages
-                println(o, "##### $(msg.uri):$(msg.line) on $(join(msg.profile_names, ", "))")
+                println(o, "##### $(msg.uri):$(msg.line) on $(join(escape_markdown.(msg.profile_names), ", "))")
                 println(o, "```")
                 println(o, msg.message)
                 println(o, "```")
