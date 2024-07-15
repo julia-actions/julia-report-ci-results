@@ -50,14 +50,14 @@ results = TestrunResult(
                             l["profile_name"],
                             Symbol(l["status"]),
                             l["duration"],
-                            haskey(j, "messages") ?
+                            haskey(l, "messages") ?
                                 [
                                     TestrunResultMessage(
                                         k["message"],
                                         URI(k["uri"]),
                                         k["line"],
                                         k["column"]
-                                    ) for k in j["messages"]
+                                    ) for k in l["messages"]
                                 ] :
                                 missing
                         ) for l in j["profiles"]
