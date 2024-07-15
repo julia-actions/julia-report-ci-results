@@ -21,7 +21,7 @@ function convert_to_uri(s)
         m = match(r, uri.path)
 
         if m!==nothing
-            return URI("ourpackage", nothing, "$(m[1])/$(m[2])", nothing, nothing)
+            return URI("ourpackage", nothing, "$(m[2])", nothing, nothing)
         end
     end
 
@@ -126,7 +126,8 @@ for ti in grouped_testitems
                 collect
             
             for msg in deduplicated_messages
-                println(o, "##### $(msg.uri):$(msg.line) on $(join(escape_markdown.(msg.profile_names), ", "))")
+                github_uri = URI("https", nothing, "https://github.com/davidanthoff/StringBuilders.jl/blob/21181359421822f72050c5ae880e1b2781095757/$(msg.uri.path)#L$(msg.line)", nothing, nothing)
+                println(o, "##### $github_uri:$(msg.line) on $(join(escape_markdown.(msg.profile_names), ", "))")
                 println(o, "```")
                 println(o, msg.message)
                 println(o, "```")
