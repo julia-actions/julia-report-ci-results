@@ -33,6 +33,10 @@ function escape_markdown(s)
     return replace(s, "-" => "\\-")
 end
 
+for i in json_files_content
+    JSON.print(i)
+end
+
 results = TestrunResult(
     TestrunResultDefinitionError[],
     [
@@ -79,7 +83,7 @@ println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
 println(o, "## Detailed testitem output")
 for ti in grouped_testitems
-    println(o, "### `$(ti.name)`` in $(ti.uri)")
+    println(o, "### `$(ti.name)` in $(ti.uri.path)")
 
     if all(tp->tp.status==:passed, ti.profiles)
         println(o, "Passed on all platforms ($(join(map(i->escape_markdown(i.profile_name), ti.profiles), ", "))).")
