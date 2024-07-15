@@ -51,10 +51,10 @@ function agnostic_message(s)
 end
 
 function compress_profile_lists(profiles)
-    r"Julia (\d*.\d*.\d*)\~(.*)\:(.*)"
+    reg = r"Julia (\d*.\d*.\d*)\~(.*)\:(.*)"
 
     asdf = profiles |>
-    @map(match(r, _)) |>
+    @map(match(reg, _)) |>
     @filter(!isnothing(_)) |>
     @map({version=_[1], arch=_[2], os=_[3]}) |>
     @groupby({_.os, _.version}) |>
