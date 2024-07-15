@@ -58,8 +58,11 @@ function compress_profile_lists(profiles)
     @filter(!isnothing(_)) |>
     @map({version=_[1], arch=_[2], os=_[3]}) |>
     @groupby({_.os, _.version}) |>
+    @orderby(_.os) |>
+    @thenby(_.version) |>
     @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
     @groupby({_.os}) |>
+    @orderby(_.os) |>
     @map(key(_).os * " (" * join(_.version, ", ") * ")") |>
     collect
     
@@ -144,7 +147,7 @@ for ti in grouped_testitems
             for msg in deduplicated_messages
                 github_uri = URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)", nothing, "L$(msg.line)")
                 println(github_uri)
-                println(o, "##### [$(msg.uri.path):$(msg.line)]($github_uri) on $(join(escape_markdown.(msg.profile_names), ", "))")
+                println(o, "##### [$(msg.uri.path):$(msg.line)]($github_uri) on $(escape_markdown(compress_profile_list(msg.profile_names)))")
                 println(o, "```")
                 println(o, msg.message)
                 println(o, "```")
