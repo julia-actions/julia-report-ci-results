@@ -115,7 +115,7 @@ for ti in grouped_testitems
 
         for i in grouped_by_status
             println("WE GET THIS ", i)
-            println(o, "#### $(i.status) on $(join(map(j->escape_markdown(j.profile_name)), i.profiles, ", "))")
+            println(o, "#### $(i.status) on $(join(map(j->escape_markdown(j.profile_name), i.profiles), ", "))")
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
