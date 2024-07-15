@@ -4,6 +4,8 @@ inputs:
   results-path:
     type: string
     required: true
+  lint-results:
+    required: false
 runs:
   using: "composite"
   steps:
@@ -41,3 +43,4 @@ runs:
       env:
         JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-run-testitems-depot
         RESULTS_PATH: ${{ inputs.results-path }}
+        LINT_RESULTS: ${{ inputs.lint-results }}

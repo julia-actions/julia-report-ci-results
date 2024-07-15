@@ -120,6 +120,8 @@ collect
 
 o = IOBuffer()
 
+println(ENV["LINT_RESUlts"])
+
 println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
 println(o, "## Detailed testitem output")
