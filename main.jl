@@ -29,6 +29,7 @@ function convert_to_uri(s)
 end
 
 function agnostic_message(s)
+    s = replace(s, "\r\n" => "\n")
     parts = split(s, '\n', limit=2)
 
     regexes = [
