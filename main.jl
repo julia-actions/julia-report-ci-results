@@ -132,7 +132,7 @@ for ti in grouped_testitems
             collect
 
         for i in grouped_by_status
-            println(o, "#### $(i.status) on $(compress_profile_lists(escape_markdown.(i.profiles)))")
+            println(o, "#### $(i.status) on $(compress_profile_lists(map(j->escape_markdown(j.profile_name), i.profiles)))")
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
