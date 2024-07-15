@@ -17,7 +17,7 @@ runs:
       shell: bash
       id: julia-version
       run: |
-        echo "JULIA_VERSION=$(julia +release -v)" >> $GITHUB_OUTPUT
+        echo "JULIA_VERSION=$(julia -v)" >> $GITHUB_OUTPUT
     - uses: actions/cache@v4
       id: cache-project
       with:
@@ -25,7 +25,7 @@ runs:
         key: julia-report-ci-results-cache-${{ runner.os }}-${{ steps.julia-version.outputs.JULIA_VERSION }}-${{ steps.project-hash.outputs.MANIFEST_HASH }}
     - name: Install and precompile
       if: steps.cache-project.outputs.cache-hit != 'true'
-      run: julia +release -e 'import Pkg; Pkg.instantiate()'
+      run: julia -e 'import Pkg; Pkg.instantiate()'
       shell: bash
       env:
         JULIA_PROJECT: ${{ github.action_path }}
