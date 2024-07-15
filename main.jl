@@ -131,6 +131,7 @@ collect
 o = IOBuffer()
 
 lint_results = ENV["LINT_RESULTS"]
+println(lint_results)
 
 println(o, "# Lint summary")
 println(o, "$(length(lint_results)) lint messages were generated.")
