@@ -28,6 +28,16 @@ function convert_to_uri(s)
     return uri
 end
 
+function github_uri_from_uri(s, line)
+    converted_uri = convert_to_uri(s)
+
+    if converted_uri.scheme == "ourpackage"
+        return URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(converted_uri.path)", nothing, isnothing(line) ? nothing : "L$line")
+    else
+        return s
+    end
+end
+
 function agnostic_message(s)
     s = chomp(s)
     s = replace(s, "\r\n" => "\n")
@@ -120,7 +130,17 @@ collect
 
 o = IOBuffer()
 
-println(ENV["LINT_RESULTS"])
+lint_results = ENV["LINT_RESULTS"]
+
+println(o, "# Lint summary")
+println(o, "$(length(lint_results)) lint messages were generated.")
+for diag in lint_results
+    path = convert_to_uri(diag["uri"]).path
+    github_uri = github_uri_from_uri(diag["uri"], diag["line"])
+
+    println(o, "## $(diag["severity"]) [$path:$(diag["line"])]($github_uri) from $(diag["source"])")
+    println(o, "`$(diag["message"])`")
+end
 
 println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
@@ -147,7 +167,7 @@ for ti in grouped_testitems
                 collect
             
             for msg in deduplicated_messages
-                github_uri = URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)", nothing, "L$(msg.line)")
+                github_uri = github_uri_from_uri(msg.uri, msg.line) # URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)", nothing, "L$(msg.line)")
                 println(github_uri)
                 println(o, "##### [$(msg.uri.path):$(msg.line)]($github_uri) on $(escape_markdown(compress_profile_lists(msg.profile_names)))")
                 println(o, "```")
