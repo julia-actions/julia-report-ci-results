@@ -120,7 +120,7 @@ collect
 
 o = IOBuffer()
 
-println(ENV["LINT_RESUlts"])
+println(ENV["LINT_RESULTS"])
 
 println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
