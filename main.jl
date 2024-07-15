@@ -118,7 +118,7 @@ for ti in grouped_testitems
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
-                @mapman(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
+                @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
                 @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
                 @map({key(_)...}) |>
                 collect
