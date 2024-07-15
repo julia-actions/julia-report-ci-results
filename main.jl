@@ -2,6 +2,8 @@ import TestItemRunner2, JSON, GitHubActions
 using TestItemRunner2: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
 using GitHubActions: add_to_file
 
+using Query
+
 results_path = ENV["RESULTS_PATH"]
 
 json_files_content = [JSON.parsefile(joinpath(results_path, i)) for i in readdir(results_path)]
@@ -33,7 +35,7 @@ results = TestrunResult(
             [
                 TestrunResultTestitem(
                     j["name"],
-                    convert_to_uri(j["uri"]),
+                    URI(j["uri"]),
                     [
                         TestrunResultTestitemProfile(
                             l["profile_name"],
@@ -43,7 +45,7 @@ results = TestrunResult(
                                 [
                                     TestrunResultMessage(
                                         k["message"],
-                                        convert_to_uri(k["uri"]),
+                                        URI(k["uri"]),
                                         k["line"],
                                         k["column"]
                                     ) for k in j["messages"]
@@ -57,12 +59,17 @@ results = TestrunResult(
     ]
 )
 
+grouped_testitems = results.testitems |>
+@groupby({_.name, uri=convert_to_uri(_.uri)}) |>
+@map(TestrunResultTestitem(key(_).name, key(_).uri, [_...;])) |>
+collect
+
 o = IOBuffer()
 
 println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
 println(o, "## Detailed testitem output")
-for ti in results.testitems
+for ti in grouped_testitems
     println(o, "### $(ti.name) in $(ti.uri)")
     for tp in ti.profiles
         println(o, "Result on $(tp.profile_name) is $(tp.status)")
