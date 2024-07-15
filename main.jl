@@ -28,6 +28,11 @@ function convert_to_uri(s)
     return uri
 end
 
+# Completely wrong, but good enough for now!
+function escape_markdown(s)
+    return replace(s, "-" => "\\-")
+end
+
 results = TestrunResult(
     TestrunResultDefinitionError[],
     [
@@ -59,10 +64,14 @@ results = TestrunResult(
     ]
 )
 
+println(results)
+
 grouped_testitems = results.testitems |>
 @groupby({_.name, uri=convert_to_uri(_.uri)}) |>
 @map(TestrunResultTestitem(key(_).name, key(_).uri, [(_.profiles)...;])) |>
 collect
+
+println(grouped_testitems)
 
 o = IOBuffer()
 
@@ -73,10 +82,10 @@ for ti in grouped_testitems
     println(o, "### `$(ti.name)`` in $(ti.uri)")
 
     if all(tp->tp.status==:passed, ti.profiles)
-        println(o, "Passed on all platforms ($(join(map(i->i.profile_name, ti.profiles), ", "))).")
+        println(o, "Passed on all platforms ($(join(map(i->escape_markdown(i.profile_name), ti.profiles), ", "))).")
     else
         for tp in ti.profiles
-            println(o, "#### Result on $(tp.profile_name) is $(tp.status)")
+            println(o, "#### Result on $(escape_markdown(tp.profile_name)) is $(tp.status)")
 
             if tp.messages!==missing
                 for msg in tp.messages
