@@ -6,6 +6,26 @@ results_path = ENV["RESULTS_PATH"]
 
 json_files_content = [JSON.parsefile(joinpath(results_path, i)) for i in readdir(results_path)]
 
+function convert_to_uri(s)
+    uri = URI(s)
+
+    regexes = [
+        r"\/Users\/runner\/work\/([^\/]*)\/\1\/(.*)",
+        r"\/home\/runner\/work\/([^\/]*)\/\1\/(.*)",
+        r"\/d\:\/a\/([^\/]*)\/\1\/(.*)"
+    ]
+
+    for r in regexes
+        m = match(r, uri.path)
+
+        if m!==nothing
+            return URI("ourpackage", nothing, "$(m[1])/$(m[2])", nothing, nothing)
+        end
+    end
+
+    return uri
+end
+
 results = TestrunResult(
     TestrunResultDefinitionError[],
     [
@@ -13,7 +33,7 @@ results = TestrunResult(
             [
                 TestrunResultTestitem(
                     j["name"],
-                    URI(j["uri"]),
+                    convert_to_uri(j["uri"]),
                     [
                         TestrunResultTestitemProfile(
                             l["profile_name"],
@@ -23,7 +43,7 @@ results = TestrunResult(
                                 [
                                     TestrunResultMessage(
                                         k["message"],
-                                        URI(k["uri"]),
+                                        convert_to_uri(k["uri"]),
                                         k["line"],
                                         k["column"]
                                     ) for k in j["messages"]
