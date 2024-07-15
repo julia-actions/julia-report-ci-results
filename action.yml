@@ -13,9 +13,6 @@ runs:
       run: |
         $ourHash = Get-FileHash -LiteralPath "$env:GITHUB_ACTION_PATH\Manifest.toml"
         "MANIFEST_HASH=$($ourHash.Hash)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-    - name: Install release channel
-      shell: bash
-      run: juliaup add release
     - name: Check Julia version
       shell: bash
       id: julia-version
@@ -39,7 +36,7 @@ runs:
         path: ${{ runner.tool_cache }}/julia-run-testitems-depot
         key: julia-report-ci-results-cache-${{ runner.os }}-${{ steps.julia-version.outputs.JULIA_VERSION }}-${{ steps.project-hash.outputs.MANIFEST_HASH }}
     - name: Run test items
-      run: julia +release --project=${{ github.action_path }} ${{ github.action_path }}/main.jl
+      run: julia --project=${{ github.action_path }} ${{ github.action_path }}/main.jl
       shell: pwsh
       env:
         JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-run-testitems-depot
