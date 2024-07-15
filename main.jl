@@ -50,7 +50,7 @@ results = TestrunResult(
                             l["profile_name"],
                             Symbol(l["status"]),
                             l["duration"],
-                            haskey(l, "messages") ?
+                            l["messages"] !== nothing ?
                                 [
                                     TestrunResultMessage(
                                         k["message"],
