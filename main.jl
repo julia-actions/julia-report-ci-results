@@ -34,14 +34,14 @@ function agnostic_message(s)
     regexes = [
         r"Test Failed at \/Users\/runner\/work\/([^\/]*)\/\1\/(.*)",
         r"Test Failed at \/home\/runner\/work\/([^\/]*)\/\1\/(.*)",
-        r"Test Failed at \/d\:\/a\/([^\/]*)\/\1\/(.*)"
+        r"Test Failed at d\:\\a\\([^\/]*)\\\1\\(.*)"
     ]
 
     for r in regexes
         m = match(r, parts[1])
 
         if m!==nothing
-            return "Test Failed at $(m[1])/$(m[2])\n$(parts[2])"
+            return "Test Failed at $(m[1])/$(replace(m[2], '\\'=>'/'))\n$(parts[2])"
         end
     end
 
