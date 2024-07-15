@@ -141,7 +141,7 @@ for diag in lint_results
     github_uri = github_uri_from_uri(uri, diag["line"])
 
     println(o, "## $(diag["severity"]) [$path:$(diag["line"])]($github_uri) from $(diag["source"])")
-    println(o, "`$(diag["message"])`")
+    println(o, "$(diag["message"])")
 end
 
 println(o, "# Test summary")
