@@ -70,9 +70,21 @@ println(o, "# Test summary")
 println(o, "$(length(results.testitems)) testitems were run.")
 println(o, "## Detailed testitem output")
 for ti in grouped_testitems
-    println(o, "### $(ti.name) in $(ti.uri)")
-    for tp in ti.profiles
-        println(o, "Result on $(tp.profile_name) is $(tp.status)")
+    println(o, "### `$(ti.name)`` in $(ti.uri)")
+
+    if all(tp->tp.status==:passed, ti.profiles)
+        println(o, "Passed on all platforms ($(join(map(i->i.profile_name, ti.profiles), ", "))).")
+    else
+        for tp in ti.profiles
+            println(o, "#### Result on $(tp.profile_name) is $(tp.status)")
+
+            if tp.messages!==missing
+                for msg in tp.messages
+                    println(o, "##### $(msg.uri):$(msg.line)")
+                    println(o, msg.message)
+                end
+            end
+        end
     end
 end
 
