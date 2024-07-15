@@ -1,7 +1,6 @@
-import TestItemRunner2, JSON, GitHubActions, StringBuilders
+import TestItemRunner2, JSON, GitHubActions
 using TestItemRunner2: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
 using GitHubActions: add_to_file
-using StringBuilders: StringBuilder
 
 results_path = ENV["RESULTS_PATH"]
 
@@ -51,3 +50,5 @@ for ti in results.testitems
 end
 
 add_to_file("GITHUB_STEP_SUMMARY", String(take!(o)))
+
+exit(1)
