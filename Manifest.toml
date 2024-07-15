@@ -2,7 +2,7 @@
 
 julia_version = "1.10.4"
 manifest_format = "2.0"
-project_hash = "3546dbe0cdf61cc96f4d72dd28ffb59b0a8d8acb"
+project_hash = "41cc497974cc9d5331f70c50b57573862c9d3f08"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -81,7 +81,7 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.GitHubActions]]
 deps = ["JSON", "Logging"]
-path = "C:\\Users\\david\\.julia\\dev\\GitHubActions"
+git-tree-sha1 = "8750718611144f23584ca265d899baa1bf1a4531"
 uuid = "6b79fd1a-b13a-48ab-b6b0-aaee1fee41df"
 version = "0.1.7"
 
@@ -285,11 +285,6 @@ version = "1.10.0"
 deps = ["LinearAlgebra", "SparseArrays"]
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 version = "1.10.0"
-
-[[deps.StringBuilders]]
-git-tree-sha1 = "3d340051661e5787a91a7f62d850977cec9b27e4"
-uuid = "db12335b-fddc-5e1b-b0ee-42071d21ae50"
-version = "0.3.0"
 
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "libblastrampoline_jll"]
