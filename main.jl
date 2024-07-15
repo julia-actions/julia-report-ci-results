@@ -50,6 +50,22 @@ function agnostic_message(s)
     return s
 end
 
+function compress_profile_lists(profiles)
+    r"Julia (\d*.\d*.\d*)\~(.*)\:(.*)"
+
+    asdf = profiles |>
+    @map(match(r, _)) |>
+    @filter(!isnothing(_)) |>
+    @map({version=_[1], arch=_[2], os=_[3]}) |>
+    @groupby({_.os, _.version}) |>
+    @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
+    @groupby({_.os}) |>
+    @map("$(key(_).os) ($join(_.version, ", "))") |>
+    collect
+    
+    return join(asdf, ", ")
+end
+
 # Completely wrong, but good enough for now!
 function escape_markdown(s)
     return replace(s, "-" => "\\-", "~" => "\\~")
@@ -116,7 +132,7 @@ for ti in grouped_testitems
             collect
 
         for i in grouped_by_status
-            println(o, "#### $(i.status) on $(join(map(j->escape_markdown(j.profile_name), i.profiles), ", "))")
+            println(o, "#### $(i.status) on $(compress_profile_lists(escape_markdown.(i.profiles)))")
 
             deduplicated_messages = i.profiles |>
                 @filter(_.messages!==missing) |>
