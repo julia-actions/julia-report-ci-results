@@ -130,7 +130,7 @@ collect
 
 o = IOBuffer()
 
-lint_results = ENV["LINT_RESULTS"]
+lint_results = JSON.parse(ENV["LINT_RESULTS"])
 println(lint_results)
 
 println(o, "# Lint summary")
