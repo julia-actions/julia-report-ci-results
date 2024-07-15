@@ -1,11 +1,13 @@
-import TestItemRunner2, JSON
+import TestItemRunner2, JSON, GitHubActions, StringBuilders
 using TestItemRunner2: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
+using GitHubActions: add_to_file
+using StringBuilders: StringBuilder
 
 results_path = ENV["RESULTS_PATH"]
 
 json_files_content = [JSON.parsefile(joinpath(results_path, i)) for i in readdir(results_path)]
 
-x = TestrunResult(
+results = TestrunResult(
     TestrunResultDefinitionError[],
     [
         (
@@ -36,5 +38,16 @@ x = TestrunResult(
     ]
 )
 
-println("AND IT IS")
-println(x)
+sb = StringBuilder()
+
+append!(sb, "# Test summary")
+append!(sb, "$(length(results.testitems)) testitems were run.")
+append!(sb, "## Detailed testitem output")
+for ti in results.testitems
+    append!(sb, "### $(ti.name) in $(ti.uri)")
+    for tp in ti.profiles
+        append!(sb, "Result on $(tp.profile_name) is $(tp.status)")
+    end
+end
+
+add_to_file("GITHUB_STEP_SUMMARY", String(sb))
