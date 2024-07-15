@@ -7,7 +7,7 @@ json_files_content = [JSON.parsefile(joinpath(results_path, i)) for i in readdir
 
 x = TestrunResult(
     TestrunResultDefinitionError[],
-    [([TestrunResultTestitem(j["name"], URI(j["uri"]), [TestrunResultTestitemProfile(l["name"], Symbol(l["status"], l["duration"], [TestrunResultMessage(k["message"], URI(k["uri"]), k["line"], k["column"]) for k in j["messages"]])) for l in j["profiles"]]) for j in i["testitems"]] for i in json_files_content)...;]
+    [([TestrunResultTestitem(j["name"], URI(j["uri"]), [TestrunResultTestitemProfile(l["profile_name"], Symbol(l["status"], l["duration"], [TestrunResultMessage(k["message"], URI(k["uri"]), k["line"], k["column"]) for k in j["messages"]])) for l in j["profiles"]]) for j in i["testitems"]] for i in json_files_content)...;]
 )
 
 println("AND IT IS")
