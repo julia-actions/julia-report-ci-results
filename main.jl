@@ -28,9 +28,29 @@ function convert_to_uri(s)
     return uri
 end
 
+function agnostic_message(s)
+    parts = split(s, '\n', limit=2)
+
+    regexes = [
+        r"Test Failed at \/Users\/runner\/work\/([^\/]*)\/\1\/(.*)",
+        r"Test Failed at \/home\/runner\/work\/([^\/]*)\/\1\/(.*)",
+        r"Test Failed at \/d\:\/a\/([^\/]*)\/\1\/(.*)"
+    ]
+
+    for r in regexes
+        m = match(r, parts[1])
+
+        if m!==nothing
+            return "Test Failed at $(m[1])/$(m[2])\n$(parts[2])"
+        end
+    end
+
+    return s
+end
+
 # Completely wrong, but good enough for now!
 function escape_markdown(s)
-    return replace(s, "-" => "\\-")
+    return replace(s, "-" => "\\-", "~" => "\\~")
 end
 
 for i in json_files_content
@@ -88,18 +108,41 @@ for ti in grouped_testitems
     if all(tp->tp.status==:passed, ti.profiles)
         println(o, "Passed on all platforms ($(join(map(i->escape_markdown(i.profile_name), ti.profiles), ", "))).")
     else
-        for tp in ti.profiles
-            println(o, "#### Result on $(escape_markdown(tp.profile_name)) is $(tp.status)")
+        grouped_by_status = ti.profiles |>
+            @groupby({_.status}) |>
+            @map({key(_).status, profiles=_}) |>
+            collect
 
-            if tp.messages!==missing
-                for msg in tp.messages
-                    println(o, "##### $(msg.uri):$(msg.line)")
-                    println(o, "```")
-                    println(o, msg.message)
-                    println(o, "```")
-                end
+        for i in grouped_by_status
+            println(o, "#### $(i.status) on $(join(map(i->escape_markdown(i.profile_name)), i.profiles, ", "))")
+
+            deduplicated_messages = i.profiles |>
+                @filter(_.messages!==missing) |>
+                @mapman(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
+                @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
+                @map({key(_)...}) |>
+                collect
+            
+            for msg in deduplicated_messages
+                println(o, "##### $(msg.uri):$(msg.line)")
+                println(o, "```")
+                println(o, msg.message)
+                println(o, "```")
             end
         end
+
+        # for tp in ti.profiles
+        #     println(o, "#### Result on $(escape_markdown(tp.profile_name)) is $(tp.status)")
+
+        #     if tp.messages!==missing
+        #         for msg in tp.messages
+        #             println(o, "##### $(msg.uri):$(msg.line)")
+        #             println(o, "```")
+        #             println(o, msg.message)
+        #             println(o, "```")
+        #         end
+        #     end
+        # end
     end
 end
 
