@@ -128,6 +128,8 @@ collect
 
 # println(grouped_testitems)
 
+fail_overall = false
+
 o = IOBuffer()
 
 lint_results = JSON.parse(ENV["LINT_RESULTS"])
@@ -142,6 +144,10 @@ for diag in lint_results
 
     println(o, "## $(diag["severity"]) [$path:$(diag["line"])]($github_uri) from $(diag["source"])")
     println(o, "$(diag["message"])")
+
+    if diag["severity"] == "error"
+        global fail_overall = true
+    end
 end
 
 println(o, "# Test summary")
@@ -190,9 +196,13 @@ for ti in grouped_testitems
         #         end
         #     end
         # end
+
+        global fail_overall = true
     end
 end
 
 add_to_file("GITHUB_STEP_SUMMARY", String(take!(o)))
 
-exit(1)
+if fail_overall
+    exit(1)
+end
