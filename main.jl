@@ -100,7 +100,7 @@ results = TestrunResult(
                         TestrunResultTestitemProfile(
                             l["profile_name"],
                             Symbol(l["status"]),
-                            l["duration"],
+                            something(l["duration"], missing),
                             l["messages"] !== nothing ?
                                 [
                                     TestrunResultMessage(
