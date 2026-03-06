@@ -79,9 +79,38 @@ function compress_profile_lists(profiles)
     return join(asdf, ", ")
 end
 
-# Completely wrong, but good enough for now!
-function escape_markdown(s)
-    return replace(s, "-" => "\\-", "~" => "\\~")
+function status_emoji(s::Symbol)
+    s == :passed  ? "✅" :
+    s == :failed  ? "❌" :
+    s == :errored ? "💥" :
+    s == :crash   ? "💀" :
+    s == :timeout ? "⏱️" : "❓"
+end
+
+const STATUS_SEVERITY = Dict(:passed => 0, :failed => 1, :errored => 2, :crash => 3, :timeout => 4)
+
+function worst_status(profiles)
+    statuses = map(p -> p.status, profiles)
+    return argmax(s -> get(STATUS_SEVERITY, s, 99), statuses)
+end
+
+function format_duration(profiles)
+    durations = filter(d -> d !== missing, map(p -> p.duration, profiles))
+    isempty(durations) && return "—"
+    total_ms = sum(durations)
+    if total_ms < 1000
+        return "$(round(Int, total_ms)) ms"
+    elseif total_ms < 60_000
+        return "$(round(total_ms / 1000; digits=1)) s"
+    else
+        return "$(round(total_ms / 60_000; digits=1)) min"
+    end
+end
+
+function severity_emoji(severity)
+    severity == "error"   ? "❌" :
+    severity == "warning" ? "⚠️" :
+    severity == "info"    ? "ℹ️" : "💡"
 end
 
 # for i in json_files_content
@@ -133,72 +162,139 @@ fail_overall = false
 o = IOBuffer()
 
 lint_results = JSON.parse(ENV["LINT_RESULTS"])
-println(lint_results)
 
-println(o, "# Lint summary")
-println(o, "$(length(lint_results)) lint messages were generated.")
+# ── Compute aggregate stats ──────────────────────────────────────────────
+
 for diag in lint_results
-    uri = URI(diag["uri"])
-    path = convert_to_uri(uri).path
-    github_uri = github_uri_from_uri(uri, diag["line"])
-
-    println(o, "## $(diag["severity"]) [$path:$(diag["line"])]($github_uri) from $(diag["source"])")
-    println(o, "$(diag["message"])")
-
     if diag["severity"] == "error"
         global fail_overall = true
     end
 end
 
-println(o, "# Test summary")
-println(o, "$(length(results.testitems)) testitems were run.")
-println(o, "## Detailed testitem output")
-for ti in grouped_testitems
-    println(o, "### `$(ti.name)` in $(ti.uri.path)")
+num_testitems = length(grouped_testitems)
+num_passed = count(ti -> all(p -> p.status == :passed, ti.profiles), grouped_testitems)
+num_failed = num_testitems - num_passed
+num_lint   = length(lint_results)
 
-    if all(tp->tp.status==:passed, ti.profiles)
-        println(o, "Passed on all platforms $(escape_markdown(compress_profile_lists(map(j->j.profile_name, ti.profiles)))).")
+if num_failed > 0
+    global fail_overall = true
+end
+
+# ── Banner ────────────────────────────────────────────────────────────────
+
+if fail_overall
+    println(o, "# ❌ CI Report — Issues Found")
+else
+    println(o, "# ✅ CI Report — All Checks Passed")
+end
+
+stats_parts = String[]
+push!(stats_parts, "**$(num_testitems)** test items")
+num_passed > 0 && push!(stats_parts, "**$(num_passed)** passed")
+num_failed > 0 && push!(stats_parts, "**$(num_failed)** with issues")
+num_lint   > 0 && push!(stats_parts, "**$(num_lint)** lint messages")
+println(o, "> $(join(stats_parts, " · "))")
+println(o)
+
+# ── Lint Results ──────────────────────────────────────────────────────────
+
+if !isempty(lint_results)
+    lint_errors   = count(d -> d["severity"] == "error", lint_results)
+    lint_warnings = count(d -> d["severity"] == "warning", lint_results)
+
+    lint_summary_parts = String[]
+    lint_errors   > 0 && push!(lint_summary_parts, "$(lint_errors) error$(lint_errors == 1 ? "" : "s")")
+    lint_warnings > 0 && push!(lint_summary_parts, "$(lint_warnings) warning$(lint_warnings == 1 ? "" : "s")")
+    lint_other = num_lint - lint_errors - lint_warnings
+    lint_other > 0 && push!(lint_summary_parts, "$(lint_other) info")
+
+    println(o, "<details$(lint_errors > 0 ? " open" : "")>")
+    println(o, "<summary><h2>🔍 Lint Results — $(join(lint_summary_parts, ", "))</h2></summary>")
+    println(o)
+    println(o, "| | Severity | Location | Source | Message |")
+    println(o, "|---|---|---|---|---|")
+    for diag in lint_results
+        uri = URI(diag["uri"])
+        path = convert_to_uri(uri).path
+        github_uri = github_uri_from_uri(uri, diag["line"])
+        emoji = severity_emoji(diag["severity"])
+        msg_oneline = replace(diag["message"], "\n" => " ", "|" => "\\|")
+        println(o, "| $(emoji) | $(diag["severity"]) | [$(path):$(diag["line"])]($(github_uri)) | $(diag["source"]) | $(msg_oneline) |")
+    end
+    println(o)
+    println(o, "</details>")
+    println(o)
+end
+
+# ── Test Results Summary Table ────────────────────────────────────────────
+
+println(o, "## 📋 Test Summary")
+println(o)
+println(o, "| | Test Item | File | Duration | Profiles |")
+println(o, "|---|---|---|---|---|")
+for ti in grouped_testitems
+    ws = worst_status(ti.profiles)
+    emoji = status_emoji(ws)
+    dur = format_duration(ti.profiles)
+    profiles_str = compress_profile_lists(map(p -> p.profile_name, ti.profiles))
+    println(o, "| $(emoji) | **$(ti.name)** | $(ti.uri.path) | $(dur) | $(profiles_str) |")
+end
+println(o)
+
+# ── Detailed Test Output ──────────────────────────────────────────────────
+
+println(o, "## 🔬 Detailed Results")
+println(o)
+for ti in grouped_testitems
+    all_passed = all(tp -> tp.status == :passed, ti.profiles)
+    ws = worst_status(ti.profiles)
+    emoji = status_emoji(ws)
+    open_attr = all_passed ? "" : " open"
+
+    println(o, "<details$(open_attr)>")
+    println(o, "<summary>$(emoji) <strong>$(ti.name)</strong> — <code>$(ti.uri.path)</code></summary>")
+    println(o)
+
+    if all_passed
+        profiles_str = compress_profile_lists(map(p -> p.profile_name, ti.profiles))
+        println(o, "Passed on all profiles: $(profiles_str)")
     else
         grouped_by_status = ti.profiles |>
             @groupby({_.status}) |>
             @map({key(_).status, profiles=_}) |>
             collect
 
-        for i in grouped_by_status
-            println(o, "#### $(i.status) on $(escape_markdown(compress_profile_lists(map(j->j.profile_name, i.profiles))))")
+        for grp in grouped_by_status
+            grp_emoji = status_emoji(grp.status)
+            grp_profiles = compress_profile_lists(map(p -> p.profile_name, grp.profiles))
+            println(o, "### $(grp_emoji) $(titlecase(string(grp.status)))")
+            println(o, "**Profiles:** $(grp_profiles)")
+            println(o)
 
-            deduplicated_messages = i.profiles |>
-                @filter(_.messages!==missing) |>
+            deduplicated_messages = grp.profiles |>
+                @filter(_.messages !== missing) |>
                 @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
                 @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
                 @map({key(_)..., profile_names=_.profile_name}) |>
                 collect
-            
-            for msg in deduplicated_messages
-                github_uri = github_uri_from_uri(msg.uri, msg.line) # URI("https", "github.com", "/$(ENV["GITHUB_REPOSITORY"])/blob/$(ENV["GITHUB_SHA"])/$(msg.uri.path)", nothing, "L$(msg.line)")
-                println(github_uri)
-                println(o, "##### [$(msg.uri.path):$(msg.line)]($github_uri) on $(escape_markdown(compress_profile_lists(msg.profile_names)))")
-                println(o, "```")
-                println(o, msg.message)
-                println(o, "```")
+
+            if !isempty(deduplicated_messages)
+                for msg in deduplicated_messages
+                    github_uri = github_uri_from_uri(msg.uri, msg.line)
+                    msg_profiles = compress_profile_lists(msg.profile_names)
+                    println(o, "**[$(msg.uri.path):$(msg.line)]($(github_uri))** on $(msg_profiles)")
+                    println(o)
+                    println(o, "```")
+                    println(o, msg.message)
+                    println(o, "```")
+                    println(o)
+                end
             end
         end
-
-        # for tp in ti.profiles
-        #     println(o, "#### Result on $(escape_markdown(tp.profile_name)) is $(tp.status)")
-
-        #     if tp.messages!==missing
-        #         for msg in tp.messages
-        #             println(o, "##### $(msg.uri):$(msg.line)")
-        #             println(o, "```")
-        #             println(o, msg.message)
-        #             println(o, "```")
-        #         end
-        #     end
-        # end
-
-        global fail_overall = true
     end
+
+    println(o, "</details>")
+    println(o)
 end
 
 add_to_file("GITHUB_STEP_SUMMARY", String(take!(o)))
