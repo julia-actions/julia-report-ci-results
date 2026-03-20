@@ -20,10 +20,10 @@ runs:
       id: julia-version
       run: |
         echo "JULIA_VERSION=$(julia -v)" >> $GITHUB_OUTPUT
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       id: cache-project
       with:
-        path: ${{ runner.tool_cache }}/julia-run-testitems-depot
+        path: ${{ runner.tool_cache }}/julia-report-ci-results-depot
         key: julia-report-ci-results-cache-${{ runner.os }}-${{ steps.julia-version.outputs.JULIA_VERSION }}-${{ steps.project-hash.outputs.MANIFEST_HASH }}
     - name: Install and precompile
       if: steps.cache-project.outputs.cache-hit != 'true'
@@ -31,16 +31,11 @@ runs:
       shell: bash
       env:
         JULIA_PROJECT: ${{ github.action_path }}
-        JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-run-testitems-depot
-    - uses: actions/cache/save@v4
-      if: steps.cache-project.outputs.cache-hit != 'true'
-      with:
-        path: ${{ runner.tool_cache }}/julia-run-testitems-depot
-        key: julia-report-ci-results-cache-${{ runner.os }}-${{ steps.julia-version.outputs.JULIA_VERSION }}-${{ steps.project-hash.outputs.MANIFEST_HASH }}
+        JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-report-ci-results-depot
     - name: Run test items
       run: julia --project=${{ github.action_path }} ${{ github.action_path }}/main.jl
       shell: pwsh
       env:
-        JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-run-testitems-depot
+        JULIA_DEPOT_PATH: ${{ runner.tool_cache }}/julia-report-ci-results-depot
         RESULTS_PATH: ${{ inputs.results-path }}
         LINT_RESULTS: ${{ inputs.lint-results }}

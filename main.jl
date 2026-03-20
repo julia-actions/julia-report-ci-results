@@ -146,7 +146,8 @@ results = TestrunResult(
                 ) for j in i["testitems"]
             ] for i in json_files_content
         )...;
-    ]
+    ],
+    merge(Dict{String,String}(), [Dict{String,String}(k => v for (k, v) in get(i, "process_outputs", Dict())) for i in json_files_content]...)
 )
 
 # println(results)
