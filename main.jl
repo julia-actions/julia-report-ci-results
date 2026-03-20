@@ -63,20 +63,38 @@ end
 function compress_profile_lists(profiles)
     reg = r"Julia (\d*.\d*.\d*)\~(.*)\:(.*)"
 
-    asdf = profiles |>
-    @map(match(reg, _)) |>
-    @filter(!isnothing(_)) |>
-    @map({version=_[1], arch=_[2], os=_[3]}) |>
-    @groupby({_.os, _.version}) |>
-    @orderby(_.os) |>
-    @thenby(_.version) |>
-    @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
-    @groupby({_.os}) |>
-    @orderby(_.os) |>
-    @map(key(_).os * " (" * join(_.version, ", ") * ")") |>
-    collect
-    
-    return join(asdf, ", ")
+    matched = String[]
+    unmatched = String[]
+
+    for p in profiles
+        m = match(reg, p)
+        if m !== nothing
+            push!(matched, p)
+        else
+            push!(unmatched, p)
+        end
+    end
+
+    parts = String[]
+
+    if !isempty(matched)
+        compressed = matched |>
+        @map(match(reg, _)) |>
+        @map({version=_[1], arch=_[2], os=_[3]}) |>
+        @groupby({_.os, _.version}) |>
+        @orderby(_.os) |>
+        @thenby(_.version) |>
+        @map({key(_).os, version=key(_).version * "~" * join(_.arch, "~")}) |>
+        @groupby({_.os}) |>
+        @orderby(_.os) |>
+        @map(key(_).os * " (" * join(_.version, ", ") * ")") |>
+        collect
+        append!(parts, compressed)
+    end
+
+    append!(parts, unique(unmatched))
+
+    return join(parts, ", ")
 end
 
 function status_emoji(s::Symbol)
@@ -156,6 +174,9 @@ grouped_testitems = results.testitems |>
 @groupby({_.name, uri=convert_to_uri(_.uri)}) |>
 @map(TestrunResultTestitem(key(_).name, key(_).uri, [(_.profiles)...;])) |>
 collect
+
+# Sort so failed/errored test items appear first
+sort!(grouped_testitems, by=ti -> get(STATUS_SEVERITY, worst_status(ti.profiles), 99), rev=true)
 
 # println(grouped_testitems)
 
@@ -261,9 +282,21 @@ for ti in grouped_testitems
         profiles_str = compress_profile_lists(map(p -> p.profile_name, ti.profiles))
         println(o, "> Passed on all profiles: $(profiles_str)")
     else
-        grouped_by_status = ti.profiles |>
+        passed_profiles = filter(p -> p.status == :passed, ti.profiles)
+        failed_profiles = filter(p -> p.status != :passed, ti.profiles)
+
+        # 1) Show passed profiles
+        if !isempty(passed_profiles)
+            passed_str = compress_profile_lists(map(p -> p.profile_name, passed_profiles))
+            println(o, "> ✅ **Passed** on: $(passed_str)")
+            println(o, ">")
+        end
+
+        # 2) Show failed/errored profiles grouped by status, with messages
+        grouped_by_status = failed_profiles |>
             @groupby({_.status}) |>
             @map({key(_).status, profiles=_}) |>
+            @orderby(get(STATUS_SEVERITY, _.status, 99)) |>
             collect
 
         for grp in grouped_by_status
@@ -292,20 +325,21 @@ for ti in grouped_testitems
                     println(o, ">")
                 end
             end
+        end
 
-            # Raw output per profile (collapsed)
-            for p in grp.profiles
-                if p.output !== missing && !isempty(strip(p.output))
-                    println(o, "> <details>")
-                    println(o, "> <summary>Raw output — $(p.profile_name)</summary>")
-                    println(o, ">")
-                    println(o, "> ```")
-                    println(o, "> $(replace(p.output, "\n" => "\n> "))")
-                    println(o, "> ```")
-                    println(o, ">")
-                    println(o, "> </details>")
-                    println(o, ">")
-                end
+        # 3) Raw output for all non-passed profiles, collapsed at the end
+        profiles_with_output = filter(p -> p.output !== missing && !isempty(strip(p.output)), failed_profiles)
+        if !isempty(profiles_with_output)
+            for p in profiles_with_output
+                println(o, "> <details>")
+                println(o, "> <summary>Raw output — $(p.profile_name)</summary>")
+                println(o, ">")
+                println(o, "> ```")
+                println(o, "> $(replace(p.output, "\n" => "\n> "))")
+                println(o, "> ```")
+                println(o, ">")
+                println(o, "> </details>")
+                println(o, ">")
             end
         end
     end
