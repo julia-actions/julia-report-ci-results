@@ -1,5 +1,5 @@
-import TestItemRunner2, JSON, GitHubActions
-using TestItemRunner2: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
+import TestItemRunnerCore, JSON, GitHubActions
+using TestItemRunnerCore: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
 using GitHubActions: add_to_file
 
 using Query
@@ -139,7 +139,8 @@ results = TestrunResult(
                                         k["column"]
                                     ) for k in l["messages"]
                                 ] :
-                                missing
+                                missing,
+                            something(get(l, "output", nothing), missing)
                         ) for l in j["profiles"]
                     ]
                 ) for j in i["testitems"]
@@ -257,7 +258,7 @@ for ti in grouped_testitems
 
     if all_passed
         profiles_str = compress_profile_lists(map(p -> p.profile_name, ti.profiles))
-        println(o, "Passed on all profiles: $(profiles_str)")
+        println(o, "> Passed on all profiles: $(profiles_str)")
     else
         grouped_by_status = ti.profiles |>
             @groupby({_.status}) |>
@@ -267,9 +268,9 @@ for ti in grouped_testitems
         for grp in grouped_by_status
             grp_emoji = status_emoji(grp.status)
             grp_profiles = compress_profile_lists(map(p -> p.profile_name, grp.profiles))
-            println(o, "### $(grp_emoji) $(titlecase(string(grp.status)))")
-            println(o, "**Profiles:** $(grp_profiles)")
-            println(o)
+            println(o, "> ### $(grp_emoji) $(titlecase(string(grp.status)))")
+            println(o, "> **Profiles:** $(grp_profiles)")
+            println(o, ">")
 
             deduplicated_messages = grp.profiles |>
                 @filter(_.messages !== missing) |>
@@ -282,12 +283,27 @@ for ti in grouped_testitems
                 for msg in deduplicated_messages
                     github_uri = github_uri_from_uri(msg.uri, msg.line)
                     msg_profiles = compress_profile_lists(msg.profile_names)
-                    println(o, "**[$(msg.uri.path):$(msg.line)]($(github_uri))** on $(msg_profiles)")
-                    println(o)
-                    println(o, "```")
-                    println(o, msg.message)
-                    println(o, "```")
-                    println(o)
+                    println(o, "> **[$(msg.uri.path):$(msg.line)]($(github_uri))** on $(msg_profiles)")
+                    println(o, ">")
+                    println(o, "> ```")
+                    println(o, "> $(replace(msg.message, "\n" => "\n> "))")
+                    println(o, "> ```")
+                    println(o, ">")
+                end
+            end
+
+            # Raw output per profile (collapsed)
+            for p in grp.profiles
+                if p.output !== missing && !isempty(strip(p.output))
+                    println(o, "> <details>")
+                    println(o, "> <summary>Raw output — $(p.profile_name)</summary>")
+                    println(o, ">")
+                    println(o, "> ```")
+                    println(o, "> $(replace(p.output, "\n" => "\n> "))")
+                    println(o, "> ```")
+                    println(o, ">")
+                    println(o, "> </details>")
+                    println(o, ">")
                 end
             end
         end
