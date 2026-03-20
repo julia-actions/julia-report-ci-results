@@ -94,7 +94,7 @@ function compress_profile_lists(profiles)
 
     append!(parts, unique(unmatched))
 
-    return join(parts, ", ")
+    return replace(join(parts, ", "), "~" => "\\~")
 end
 
 function status_emoji(s::Symbol)
@@ -332,7 +332,7 @@ for ti in grouped_testitems
         if !isempty(profiles_with_output)
             for p in profiles_with_output
                 println(o, "> <details>")
-                println(o, "> <summary>Raw output — $(p.profile_name)</summary>")
+                println(o, "> <summary>Raw output — $(replace(p.profile_name, "~" => "\\~"))</summary>")
                 println(o, ">")
                 println(o, "> ```")
                 println(o, "> $(replace(p.output, "\n" => "\n> "))")
