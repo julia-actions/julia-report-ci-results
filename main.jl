@@ -1,5 +1,5 @@
 import TestItemRunnerCore, JSON, GitHubActions
-using TestItemRunnerCore: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage
+using TestItemRunnerCore: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage, TestrunResultStackFrame
 using GitHubActions: add_to_file
 
 using Query
@@ -152,9 +152,21 @@ results = TestrunResult(
                                 [
                                     TestrunResultMessage(
                                         k["message"],
+                                        something(get(k, "expected_output", nothing), missing),
+                                        something(get(k, "actual_output", nothing), missing),
                                         URI(k["uri"]),
                                         k["line"],
-                                        k["column"]
+                                        k["column"],
+                                        let sf = get(k, "stack_frames", nothing)
+                                            sf === nothing ? missing : TestrunResultStackFrame[
+                                                TestrunResultStackFrame(
+                                                    f["label"],
+                                                    URI(f["uri"]),
+                                                    f["line"],
+                                                    f["column"],
+                                                ) for f in sf
+                                            ]
+                                        end,
                                     ) for k in l["messages"]
                                 ] :
                                 missing,
@@ -308,9 +320,9 @@ for ti in grouped_testitems
 
             deduplicated_messages = grp.profiles |>
                 @filter(_.messages !== missing) |>
-                @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message}) |>
+                @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message, __.stack_frames}) |>
                 @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
-                @map({key(_)..., profile_names=_.profile_name}) |>
+                @map({key(_)..., profile_names=_.profile_name, stack_frames=let sfs = collect(Iterators.filter(sf -> sf !== missing, _.stack_frames)); isempty(sfs) ? missing : sfs[1] end}) |>
                 collect
 
             if !isempty(deduplicated_messages)
@@ -323,6 +335,15 @@ for ti in grouped_testitems
                     println(o, "> $(replace(msg.message, "\n" => "\n> "))")
                     println(o, "> ```")
                     println(o, ">")
+                    if msg.stack_frames !== missing && !isempty(msg.stack_frames)
+                        println(o, "> **Stack trace:**")
+                        for frame in msg.stack_frames
+                            frame_github_uri = github_uri_from_uri(frame.uri, frame.line)
+                            frame_path = convert_to_uri(frame.uri).path
+                            println(o, "> - `$(frame.label)` at [$(frame_path):$(frame.line)]($(frame_github_uri))")
+                        end
+                        println(o, ">")
+                    end
                 end
             end
         end
