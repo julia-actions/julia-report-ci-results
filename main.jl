@@ -1,12 +1,13 @@
-import TestItemRunnerCore, JSON, GitHubActions
-using TestItemRunnerCore: URI, TestrunResult, TestrunResultDefinitionError, TestrunResultTestitem, TestrunResultTestitemProfile, TestrunResultMessage, TestrunResultStackFrame
+import TestItemControllers, JSON, GitHubActions
+using TestItemControllers.Results
+using JuliaWorkspaces.URIs2: URI
 using GitHubActions: add_to_file
 
 using Query
 
 results_path = ENV["RESULTS_PATH"]
 
-json_files_content = [JSON.parsefile(joinpath(results_path, i)) for i in readdir(results_path)]
+results_parts = [Results.read_json(joinpath(results_path, i)) for i in readdir(results_path)]
 
 function convert_to_uri(s)
     uri = URI(s)
@@ -113,7 +114,7 @@ function worst_status(profiles)
 end
 
 function format_duration(profiles)
-    durations = filter(d -> d !== missing, map(p -> p.duration, profiles))
+    durations = filter(d -> d !== nothing, map(p -> p.duration, profiles))
     isempty(durations) && return "—"
     total_ms = sum(durations)
     if total_ms < 1000
@@ -131,60 +132,17 @@ function severity_emoji(severity)
     severity == "info"    ? "ℹ️" : "💡"
 end
 
-# for i in json_files_content
-#     JSON.print(i)
-# end
-
 results = TestrunResult(
-    TestrunResultDefinitionError[],
-    [
-        (
-            [
-                TestrunResultTestitem(
-                    j["name"],
-                    URI(j["uri"]),
-                    [
-                        TestrunResultTestitemProfile(
-                            l["profile_name"],
-                            Symbol(l["status"]),
-                            something(l["duration"], missing),
-                            l["messages"] !== nothing ?
-                                [
-                                    TestrunResultMessage(
-                                        k["message"],
-                                        something(get(k, "expected_output", nothing), missing),
-                                        something(get(k, "actual_output", nothing), missing),
-                                        URI(k["uri"]),
-                                        k["line"],
-                                        k["column"],
-                                        let sf = get(k, "stack_frames", nothing)
-                                            sf === nothing ? missing : TestrunResultStackFrame[
-                                                TestrunResultStackFrame(
-                                                    f["label"],
-                                                    URI(f["uri"]),
-                                                    f["line"],
-                                                    f["column"],
-                                                ) for f in sf
-                                            ]
-                                        end,
-                                    ) for k in l["messages"]
-                                ] :
-                                missing,
-                            something(get(l, "output", nothing), missing)
-                        ) for l in j["profiles"]
-                    ]
-                ) for j in i["testitems"]
-            ] for i in json_files_content
-        )...;
-    ],
-    merge(Dict{String,String}(), [Dict{String,String}(k => v for (k, v) in get(i, "process_outputs", Dict())) for i in json_files_content]...)
+    reduce(vcat, (r.definition_errors for r in results_parts); init=TestrunResultDefinitionError[]),
+    reduce(vcat, (r.testitems for r in results_parts); init=TestrunResultTestitem[]),
+    merge(Dict{String,String}(), (r.process_outputs for r in results_parts)...),
 )
 
 # println(results)
 
 grouped_testitems = results.testitems |>
 @groupby({_.name, uri=convert_to_uri(_.uri)}) |>
-@map(TestrunResultTestitem(key(_).name, key(_).uri, [(_.profiles)...;])) |>
+@map({name=key(_).name, uri=key(_).uri, profiles=[(_.profiles)...;]}) |>
 collect
 
 # Sort so failed/errored test items appear first
@@ -319,10 +277,10 @@ for ti in grouped_testitems
             println(o, ">")
 
             deduplicated_messages = grp.profiles |>
-                @filter(_.messages !== missing) |>
+                @filter(_.messages !== nothing) |>
                 @mapmany(_.messages, {_.profile_name, __.uri, __.line, __.message, __.stack_frames}) |>
                 @groupby({uri=convert_to_uri(_.uri), _.line, message=agnostic_message(_.message)}) |>
-                @map({key(_)..., profile_names=_.profile_name, stack_frames=let sfs = collect(Iterators.filter(sf -> sf !== missing, _.stack_frames)); isempty(sfs) ? missing : sfs[1] end}) |>
+                @map({key(_)..., profile_names=_.profile_name, stack_frames=let sfs = collect(Iterators.filter(sf -> sf !== nothing, _.stack_frames)); isempty(sfs) ? nothing : sfs[1] end}) |>
                 collect
 
             if !isempty(deduplicated_messages)
@@ -335,7 +293,7 @@ for ti in grouped_testitems
                     println(o, "> $(replace(msg.message, "\n" => "\n> "))")
                     println(o, "> ```")
                     println(o, ">")
-                    if msg.stack_frames !== missing && !isempty(msg.stack_frames)
+                    if msg.stack_frames !== nothing && !isempty(msg.stack_frames)
                         println(o, "> **Stack trace:**")
                         for frame in msg.stack_frames
                             frame_github_uri = github_uri_from_uri(frame.uri, frame.line)
@@ -349,7 +307,7 @@ for ti in grouped_testitems
         end
 
         # 3) Raw output for all non-passed profiles, collapsed at the end
-        profiles_with_output = filter(p -> p.output !== missing && !isempty(strip(p.output)), failed_profiles)
+        profiles_with_output = filter(p -> p.output !== nothing && !isempty(strip(p.output)), failed_profiles)
         if !isempty(profiles_with_output)
             for p in profiles_with_output
                 println(o, "> <details>")
