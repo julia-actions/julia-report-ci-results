@@ -1,12 +1,14 @@
-import { LintDiagnostic, TestMessage, TestitemProfile } from './types';
+import { LintDiagnostic, ProcessOutput, TestMessage, TestitemProfile } from './types';
 import { GroupedTestitem, DefinitionErrorWithLocation } from './testResults';
+import { LOGS_ARTIFACT_NAME, shortId } from './artifacts';
 import { NormalizedLocation, PathContext, agnosticMessage, displayPath, githubBlobUrl, normalizeFileUri } from './paths';
 import { compressProfileList, formatDuration, isNonFailing, statusEmoji, statusSeverity, worstStatus } from './profiles';
 
 export interface RenderInput {
     grouped: GroupedTestitem[];
     definitionErrors: DefinitionErrorWithLocation[];
-    processOutputs: Record<string, string>;
+    processOutputs: ProcessOutput[];
+    processLogsUrl: string | null;
     lint: LintDiagnostic[];
     noResultFiles: boolean;
     ctx: PathContext;
@@ -43,7 +45,7 @@ export const DEFAULT_BUDGET: BudgetOptions = {
     maxSummaryRows: 1_000,
 };
 
-const TRUNCATION_NOTICE_RESERVE = 256;
+const TRUNCATION_NOTICE_RESERVE = 1024;
 
 export function escapeTableCell(s: string): string {
     return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
@@ -87,6 +89,10 @@ function lintLevelEmoji(level: string): string {
 
 // Byte-budgeted assembly: sections are appended atomically so the summary
 // never ends mid-table or mid-<details>.
+function omissionNotice(what: string): string {
+    return `> ⚠️ **Report truncated** — ${what} omitted to stay under GitHub's step-summary size limit.`;
+}
+
 class Budget {
     private parts: string[] = [];
     private used = 0;
@@ -218,7 +224,7 @@ function renderTestitemDetails(ti: GroupedTestitem, input: RenderInput, budget: 
 }
 
 export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions = DEFAULT_BUDGET): RenderOutput {
-    const { grouped, definitionErrors, processOutputs, lint, noResultFiles, ctx } = input;
+    const { grouped, definitionErrors, processOutputs, processLogsUrl, lint, noResultFiles, ctx } = input;
 
     const lintErrors = lint.filter(d => d.level === 'error').length;
     const lintWarnings = lint.filter(d => d.level === 'warning').length;
@@ -255,6 +261,7 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
         lines.push('', '');
         if (!budget.tryAppend(lines.join('\n'))) {
             truncated = true;
+            budget.forceAppend(`${omissionNotice('the test definition error section was')}\n\n`);
         }
     }
 
@@ -288,11 +295,13 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
             );
         }
         if (shown.length < lint.length) {
+            truncated = true;
             lines.push('', `> … and ${lint.length - shown.length} more lint messages not shown`);
         }
         lines.push('', '</details>', '', '');
         if (!budget.tryAppend(lines.join('\n'))) {
             truncated = true;
+            budget.forceAppend(`${omissionNotice('the lint result section was')}\n\n`);
         }
     }
 
@@ -306,11 +315,13 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
             );
         }
         if (shown.length < grouped.length) {
+            truncated = true;
             lines.push(`| … | *and ${grouped.length - shown.length} more test items* | | | |`);
         }
         lines.push('', '');
         if (!budget.tryAppend(lines.join('\n'))) {
             truncated = true;
+            budget.forceAppend(`${omissionNotice('the test summary table was')}\n\n`);
         }
     }
 
@@ -337,22 +348,51 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
     }
 
     // ── Process outputs ───────────────────────────────────────────────────
-    const processIds = Object.keys(processOutputs).filter(id => processOutputs[id].trim() !== '');
-    if (processIds.length > 0) {
-        const lines: string[] = [];
-        for (const id of processIds) {
-            lines.push('<details>');
-            lines.push(`<summary>🖥️ Test process output — <code>${escapeTableCell(id)}</code></summary>`);
-            lines.push('');
-            lines.push('```');
-            lines.push(truncateTail(processOutputs[id], budgetOptions.outputBytes));
-            lines.push('```');
-            lines.push('');
-            lines.push('</details>');
-            lines.push('');
+    if (processOutputs.length > 0) {
+        const labelCounts = new Map<string, number>();
+        for (const po of processOutputs) {
+            labelCounts.set(po.label, (labelCounts.get(po.label) ?? 0) + 1);
         }
-        if (!budget.tryAppend(lines.join('\n') + '\n')) {
+        const artifactLink = processLogsUrl === null ? null : `[${LOGS_ARTIFACT_NAME} artifact](${processLogsUrl})`;
+
+        const header =
+            '## 🖥️ Test Process Outputs\n\n' +
+            (artifactLink === null ? '' : `> 📦 Full, untruncated logs: ${artifactLink}\n\n`);
+        let omitted = 0;
+        if (budget.tryAppend(header)) {
+            for (const po of processOutputs) {
+                // The profile label identifies the matrix leg; a short process
+                // id is only needed when one leg ran several processes.
+                const label =
+                    (labelCounts.get(po.label) ?? 0) > 1
+                        ? `${po.label} — <code>${shortId(po.id)}</code>`
+                        : po.label;
+                const lines = [
+                    '<details>',
+                    `<summary>🖥️ Test process output — ${escapeTableCell(label).replace(/~/g, '\\~')}</summary>`,
+                    '',
+                    '```',
+                    truncateTail(po.output, budgetOptions.outputBytes),
+                    '```',
+                    '',
+                    '</details>',
+                    '',
+                    '',
+                ];
+                if (omitted > 0 || !budget.tryAppend(lines.join('\n'))) {
+                    omitted += 1;
+                }
+            }
+        } else {
+            omitted = processOutputs.length;
+        }
+        if (omitted > 0) {
             truncated = true;
+            budget.forceAppend(
+                `${omissionNotice(`${omitted} test process output${omitted === 1 ? '' : 's'}`)}${
+                    artifactLink === null ? '' : ` Full logs are in the ${artifactLink}.`
+                }\n\n`
+            );
         }
     }
 

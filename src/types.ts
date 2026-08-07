@@ -48,6 +48,16 @@ export interface TestrunResult {
     process_outputs: Record<string, string>;
 }
 
+// A single test-process output with provenance derived from its source file.
+// The results schema keys process outputs by a bare process uuid; the label is
+// the profile name of the source file (each CI matrix leg writes one file with
+// a single profile), falling back to the file name.
+export interface ProcessOutput {
+    id: string;
+    label: string;
+    output: string;
+}
+
 // Flattened lint diagnostic derived from julialint's SARIF output.
 
 export type LintLevel = 'error' | 'warning' | 'note';

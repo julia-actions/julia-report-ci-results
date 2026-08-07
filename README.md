@@ -26,9 +26,23 @@ default) fails the job when there are lint errors, failing test items, test
 definition errors, or no result files at all; each of those conditions can be
 made non-fatal via the `fail-on-*` inputs.
 
+Test process outputs (worker-level output such as precompilation failures,
+outside any single test item) are labeled with the profile name of the result
+file they came from — each matrix leg writes one result file with a single
+profile, so the profile identifies the platform. A short process id is
+appended only when one leg ran several processes.
+
+The full, untruncated process outputs are also uploaded as a
+`test-process-logs` artifact (one `.log` file per process, named by profile
+and short process id), and the summary links to it. When the artifact upload
+is not possible (e.g. outside the Actions runtime), the report still renders —
+only the links are dropped.
+
 Reports are truncated safely against GitHub's 1 MiB step-summary limit:
 per-block caps first (failure messages keep their head, raw output keeps its
-tail), then whole sections are dropped worst-first with a notice.
+tail), then whole sections are dropped worst-first with a notice. Process
+outputs are the first section to be dropped; the truncation notice then links
+to the `test-process-logs` artifact so the verbose output stays accessible.
 
 ## Usage
 
@@ -69,6 +83,7 @@ report-results:
 | `fail-on-missing-results` | no | `true` | Fail the step when no test-result files are found. |
 | `fail-on-test-failures` | no | `true` | Fail the step when there are failing test items or test definition errors. |
 | `fail-on-lint-errors` | no | `true` | Fail the step when there are error-severity lint results. |
+| `process-logs-retention-days` | no | | Retention in days for the uploaded `test-process-logs` artifact. Empty uses the repository default. |
 
 ## Outputs
 
@@ -79,6 +94,7 @@ report-results:
 | `failed-count` | Number of test items with issues. |
 | `definition-error-count` | Number of test definition errors. |
 | `lint-error-count` | Number of error-severity lint results. |
+| `process-logs-artifact-id` | Id of the uploaded `test-process-logs` artifact, or empty when nothing was uploaded. |
 
 ## File-format contracts
 

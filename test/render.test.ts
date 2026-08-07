@@ -32,7 +32,8 @@ function render(overrides: Partial<Parameters<typeof renderSummary>[0]> = {}, bu
         {
             grouped: [],
             definitionErrors: [],
-            processOutputs: {},
+            processOutputs: [],
+            processLogsUrl: null,
             lint: [],
             noResultFiles: false,
             ctx,
@@ -159,7 +160,7 @@ test('total budget overflow drops trailing detail blocks atomically', () => {
     const opened = markdown.split('<details').length - 1;
     const closed = markdown.split('</details>').length - 1;
     assert.strictEqual(opened, closed);
-    assert.ok(Buffer.byteLength(markdown) <= 12_000 + 256);
+    assert.ok(Buffer.byteLength(markdown) <= 12_000 + 1024);
 });
 
 test('lint row cap shows errors first and counts the rest', () => {
@@ -176,8 +177,68 @@ test('lint row cap shows errors first and counts the rest', () => {
     assert.match(markdown, /1 more lint message/);
 });
 
-test('process outputs render collapsed', () => {
-    const { markdown } = render({ processOutputs: { 'proc-1': 'process died horribly' } });
-    assert.match(markdown, /Test process output — <code>proc-1<\/code>/);
+test('process outputs render collapsed with their profile label', () => {
+    const { markdown } = render({
+        processOutputs: [
+            { id: '4767ab5a-67a4-47b4-ab39-20f5dfc7aecb', label: 'Julia 1.12.6~x64:ubuntu-latest', output: 'process died horribly' },
+        ],
+    });
+    assert.match(markdown, /Test process output — Julia 1\.12\.6\\~x64:ubuntu-latest/);
     assert.match(markdown, /process died horribly/);
+    assert.ok(!markdown.includes('4767ab5a-67a4-47b4-ab39-20f5dfc7aecb'));
+});
+
+test('short process id disambiguates only duplicate labels', () => {
+    const { markdown } = render({
+        processOutputs: [
+            { id: '4767ab5a-67a4-47b4-ab39-20f5dfc7aecb', label: 'leg-a', output: 'one' },
+            { id: 'b6a5898d-9cad-4d13-baa2-af64e3305b4d', label: 'leg-a', output: 'two' },
+            { id: 'cd33e036-3391-4572-bf58-61484da7cdf9', label: 'leg-b', output: 'three' },
+        ],
+    });
+    assert.match(markdown, /leg-a — <code>4767ab5a<\/code>/);
+    assert.match(markdown, /leg-a — <code>b6a5898d<\/code>/);
+    assert.match(markdown, /Test process output — leg-b</);
+    assert.ok(!markdown.includes('cd33e036'));
+});
+
+test('process-output section links to the logs artifact', () => {
+    const url = 'https://github.com/me/MyRepo/actions/runs/1/artifacts/2';
+    const { markdown } = render({
+        processOutputs: [{ id: 'proc-1', label: 'leg-a', output: 'hello' }],
+        processLogsUrl: url,
+    });
+    assert.ok(markdown.includes(`Full, untruncated logs: [test-process-logs artifact](${url})`));
+});
+
+test('omitted process outputs leave a notice linking to the logs artifact', () => {
+    const url = 'https://github.com/me/MyRepo/actions/runs/1/artifacts/2';
+    const outputs = Array.from({ length: 10 }, (_, i) => ({
+        id: `proc-${i}`,
+        label: `leg-${i}`,
+        output: 'output '.repeat(300),
+    }));
+    const budget = { ...DEFAULT_BUDGET, totalBytes: 5_000 };
+    const { markdown, truncated } = render({ processOutputs: outputs, processLogsUrl: url }, budget);
+    assert.strictEqual(truncated, true);
+    assert.match(markdown, /test process outputs omitted/);
+    assert.ok(markdown.includes(`Full logs are in the [test-process-logs artifact](${url})`));
+    const opened = markdown.split('<details').length - 1;
+    const closed = markdown.split('</details>').length - 1;
+    assert.strictEqual(opened, closed);
+});
+
+test('a lint section that does not fit leaves an in-summary notice', () => {
+    const lint = Array.from({ length: 50 }, (_, i) => lintError(`message ${i} ${'x'.repeat(100)}`));
+    const budget = { ...DEFAULT_BUDGET, totalBytes: 2_000 };
+    const { markdown, truncated } = render({ lint }, budget);
+    assert.strictEqual(truncated, true);
+    assert.match(markdown, /Report truncated.*lint result section/);
+});
+
+test('lint row cap marks the report as truncated', () => {
+    const lint = [lintError('a'), lintError('b')];
+    const budget = { ...DEFAULT_BUDGET, maxLintRows: 1 };
+    const { truncated } = render({ lint }, budget);
+    assert.strictEqual(truncated, true);
 });

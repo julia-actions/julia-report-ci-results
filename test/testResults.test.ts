@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { groupTestitems, mergeResults, parseTestrunResult } from '../src/testResults';
+import { ResultFile, deriveFileLabel, groupTestitems, mergeResults, parseTestrunResult } from '../src/testResults';
 import { TestrunResult } from '../src/types';
 
 const linuxUri = 'file:///home/runner/work/MyRepo/MyRepo/test/a.jl';
 const windowsUri = 'file:///d:/a/MyRepo/MyRepo/test/a.jl';
+
+function resultFile(result: TestrunResult, fileName = 'results.json'): ResultFile {
+    return { fileName, result };
+}
 
 function resultFixture(profileName: string, status: string, uri: string): TestrunResult {
     return {
@@ -54,8 +58,8 @@ test('rejects a non-result file naming the file', () => {
 
 test('merges parts and groups cross-OS test items together', () => {
     const merged = mergeResults([
-        resultFixture('Julia 1.10:ubuntu-latest', 'passed', linuxUri),
-        resultFixture('Julia 1.10:windows-latest', 'failed', windowsUri),
+        resultFile(resultFixture('Julia 1.10:ubuntu-latest', 'passed', linuxUri), 'a.json'),
+        resultFile(resultFixture('Julia 1.10:windows-latest', 'failed', windowsUri), 'b.json'),
     ]);
     assert.strictEqual(merged.testitems.length, 2);
 
@@ -70,9 +74,36 @@ test('sorts worst-status items first', () => {
     ok.testitems[0].name = 'ok item';
     const bad = resultFixture('p1', 'errored', linuxUri);
     bad.testitems[0].name = 'bad item';
-    const grouped = groupTestitems(mergeResults([ok, bad]).testitems, {});
+    const grouped = groupTestitems(mergeResults([resultFile(ok), resultFile(bad)]).testitems, {});
     assert.deepStrictEqual(
         grouped.map(g => g.name),
         ['bad item', 'ok item']
     );
+});
+
+test('process outputs are labeled with the profile of their source file', () => {
+    const result = resultFixture('Julia 1.12.6~x64:ubuntu-latest', 'passed', linuxUri);
+    result.process_outputs = { 'aaaa-bbbb': 'some output' };
+    const merged = mergeResults([resultFile(result, 'testitemresults-ubuntu-latest-1.12.6~x64.json')]);
+    assert.deepStrictEqual(merged.processOutputs, [
+        { id: 'aaaa-bbbb', label: 'Julia 1.12.6~x64:ubuntu-latest', output: 'some output' },
+    ]);
+});
+
+test('label falls back to the file name for empty or multi-profile files', () => {
+    const empty: TestrunResult = { definition_errors: [], testitems: [], process_outputs: {} };
+    assert.strictEqual(deriveFileLabel(resultFile(empty, 'crashed-leg.json')), 'crashed-leg.json');
+
+    const multi = resultFixture('p1', 'passed', linuxUri);
+    multi.testitems[0].profiles.push({ ...multi.testitems[0].profiles[0], profile_name: 'p2' });
+    assert.strictEqual(deriveFileLabel(resultFile(multi, 'multi.json')), 'multi.json');
+});
+
+test('whitespace-only process outputs are dropped and duplicate ids deduped', () => {
+    const a = resultFixture('p1', 'passed', linuxUri);
+    a.process_outputs = { blank: '  \n', dup: 'from a' };
+    const b = resultFixture('p2', 'passed', linuxUri);
+    b.process_outputs = { dup: 'from b' };
+    const merged = mergeResults([resultFile(a, 'a.json'), resultFile(b, 'b.json')]);
+    assert.deepStrictEqual(merged.processOutputs, [{ id: 'dup', label: 'p2', output: 'from b' }]);
 });

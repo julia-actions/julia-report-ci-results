@@ -6,9 +6,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && ncc build dist/src/index.js -o dist",
-    "test": "tsc && node --test dist/test/paths.test.js dist/test/profiles.test.js dist/test/testResults.test.js dist/test/sarif.test.js dist/test/render.test.js"
+    "test": "tsc && node --test dist/test/paths.test.js dist/test/profiles.test.js dist/test/testResults.test.js dist/test/sarif.test.js dist/test/render.test.js dist/test/artifacts.test.js"
   },
   "dependencies": {
+    "@actions/artifact": "^2.2.0",
     "@actions/core": "^1.10.0"
   },
   "devDependencies": {

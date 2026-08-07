@@ -3,9 +3,10 @@ import * as path from 'path';
 import * as core from '@actions/core';
 import { PathContext } from './paths';
 import { parseSarifLog } from './sarif';
-import { groupTestitems, mergeResults, normalizeDefinitionErrors, parseTestrunResult } from './testResults';
+import { ResultFile, groupTestitems, mergeResults, normalizeDefinitionErrors, parseTestrunResult } from './testResults';
 import { renderSummary } from './render';
-import { LintDiagnostic, TestrunResult } from './types';
+import { uploadProcessLogs } from './artifacts';
+import { LintDiagnostic } from './types';
 
 function listFiles(directory: string, extensions: string[]): string[] {
     if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
@@ -27,12 +28,24 @@ function getBoolInput(name: string, defaultValue: boolean): boolean {
     throw new TypeError(`Input "${name}" must be 'true' or 'false', got '${raw}'`);
 }
 
+// An empty/unset input yields null (meaning "use the default").
+function getIntInput(name: string): number | null {
+    const raw = core.getInput(name).trim();
+    if (raw === '') return null;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0) {
+        throw new TypeError(`Input "${name}" must be a positive integer, got '${raw}'`);
+    }
+    return value;
+}
+
 async function run(): Promise<void> {
     const resultsPath = core.getInput('results-path', { required: true });
     const lintResultsPath = core.getInput('lint-results-path');
     const failOnMissingResults = getBoolInput('fail-on-missing-results', true);
     const failOnTestFailures = getBoolInput('fail-on-test-failures', true);
     const failOnLintErrors = getBoolInput('fail-on-lint-errors', true);
+    const processLogsRetentionDays = getIntInput('process-logs-retention-days');
 
     const ctx: PathContext = {
         workspace: process.env.GITHUB_WORKSPACE,
@@ -43,12 +56,13 @@ async function run(): Promise<void> {
 
     // Skip files that are not test-result JSONs (with a warning) instead of
     // failing the whole report on one stray file.
-    const parts: TestrunResult[] = [];
+    const parts: ResultFile[] = [];
     for (const file of listFiles(resultsPath, ['.json'])) {
+        const fileName = path.basename(file);
         try {
-            parts.push(parseTestrunResult(JSON.parse(fs.readFileSync(file, 'utf8')), path.basename(file)));
+            parts.push({ fileName, result: parseTestrunResult(JSON.parse(fs.readFileSync(file, 'utf8')), fileName) });
         } catch (error) {
-            core.warning(`Skipping ${path.basename(file)}: ${(error as Error).message}`);
+            core.warning(`Skipping ${fileName}: ${(error as Error).message}`);
         }
     }
     const results = mergeResults(parts);
@@ -60,10 +74,14 @@ async function run(): Promise<void> {
         }
     }
 
+    // Upload before rendering so the summary can link to the artifact.
+    const logs = await uploadProcessLogs(results.processOutputs, processLogsRetentionDays);
+
     const { markdown, failOverall, truncated, stats } = renderSummary({
         grouped: groupTestitems(results.testitems, ctx),
         definitionErrors: normalizeDefinitionErrors(results.definition_errors, ctx),
-        processOutputs: results.process_outputs,
+        processOutputs: results.processOutputs,
+        processLogsUrl: logs?.url ?? null,
         lint,
         noResultFiles: parts.length === 0,
         ctx,
@@ -72,6 +90,7 @@ async function run(): Promise<void> {
     await core.summary.addRaw(markdown).write();
 
     core.setOutput('failed', failOverall);
+    core.setOutput('process-logs-artifact-id', logs?.artifactId ?? '');
     core.setOutput('test-count', stats.numTestitems);
     core.setOutput('failed-count', stats.numFailed);
     core.setOutput('definition-error-count', stats.numDefinitionErrors);
