@@ -1,0 +1,19 @@
+{
+  "name": "julia-report-ci-results",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Render a CI job summary from Julia test-result JSON files and lint SARIF files",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && ncc build dist/src/index.js -o dist",
+    "test": "tsc && node --test dist/test/paths.test.js dist/test/profiles.test.js dist/test/testResults.test.js dist/test/sarif.test.js dist/test/render.test.js"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vercel/ncc": "^0.38.0",
+    "typescript": "^5.0.0"
+  }
+}

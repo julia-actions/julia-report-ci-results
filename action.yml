@@ -1,22 +1,12 @@
 name: 'Report Julia CI results'
-description: 'Report Julia CI results'
+description: 'Render a CI job summary from test-result JSON files and lint SARIF files'
 inputs:
   results-path:
-    type: string
+    description: 'Directory containing test-result *.json files (as written by julia-run-testitems)'
     required: true
-  lint-results:
+  lint-results-path:
+    description: 'Directory containing lint *.sarif file(s); may be missing or empty if lint was skipped'
     required: false
 runs:
-  using: "composite"
-  steps:
-    - name: Install and precompile
-      run: julia -e 'import Pkg; Pkg.instantiate()'
-      shell: bash
-      env:
-        JULIA_PROJECT: ${{ github.action_path }}
-    - name: Report results
-      run: julia --project=${{ github.action_path }} ${{ github.action_path }}/main.jl
-      shell: pwsh
-      env:
-        RESULTS_PATH: ${{ inputs.results-path }}
-        LINT_RESULTS: ${{ inputs.lint-results }}
+  using: 'node20'
+  main: 'dist/index.js'

@@ -1,22 +1,70 @@
 # julia-report-ci-results
 
-This is an experiment, nothing to see at the moment.
+> [!WARNING]
+> This action is under active development and its interface may change.
 
-## Requirements and caching
+A GitHub Action that renders a single CI job summary from the results of a
+Julia test-and-lint run:
 
-The action requires `julia` on the PATH (e.g. via
-`julia-actions/install-juliaup`); nothing installs it for you.
+- **Test results**: a directory of JSON files written by
+  [julia-run-testitems](https://github.com/julia-actions/julia-run-testitems)
+  (one file per matrix leg, downloaded from artifacts). Results for the same
+  test item from different OS/version legs are merged, identical failures are
+  deduplicated across profiles, and profile lists are compressed per OS.
+- **Lint results** (optional): a directory containing SARIF file(s) as
+  produced by [julia-lint](https://github.com/julia-actions/julia-lint) /
+  [`julialint`](https://github.com/julia-vscode/JuliaLintApp.jl).
 
-The action does not cache anything itself — it instantiates its dependencies
-into the default Julia depot (`~/.julia`). To cache the depot, add a job-level
-cache step before this action:
+The action is pure TypeScript (`node20`) — it needs no Julia installation, no
+checkout, and no cache, and makes no GitHub API calls (so it needs no token
+and works on fork PRs). It writes the report to the job summary and fails the
+job when there are lint errors, failing test items, test definition errors, or
+no result files at all.
+
+Reports are truncated safely against GitHub's 1 MiB step-summary limit:
+per-block caps first (failure messages keep their head, raw output keeps its
+tail), then whole sections are dropped worst-first with a notice.
+
+## Usage
 
 ```yaml
-- uses: julia-actions/install-juliaup@v2
-  with:
-    channel: release
-- uses: julia-actions/cache@v2
+report-results:
+  needs: [run-tests, lint]
+  if: ${{ !cancelled() }}
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: testitemresults-*
+        path: testresults
+        merge-multiple: true
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: lintresults*
+        path: lintresults
+        merge-multiple: true
+    - uses: julia-actions/julia-report-ci-results@main
+      with:
+        results-path: testresults
+        lint-results-path: lintresults
 ```
 
-Note: if the job sets `JULIA_DEPOT_PATH`, the action now uses that depot
-(earlier versions overrode it with a private depot under `runner.tool_cache`).
+## Inputs
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `results-path` | yes | Directory containing test-result `*.json` files. |
+| `lint-results-path` | no | Directory containing lint `*.sarif` file(s). May be missing or empty when lint was skipped. |
+
+## Development
+
+The action is bundled into `dist/index.js` (committed). After changing `src/`,
+run:
+
+```
+npm install
+npm test
+npm run build
+```
+
+and commit the updated `dist/index.js` together with the source change.
