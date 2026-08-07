@@ -33,6 +33,7 @@ export function statusSeverity(status: string): number {
 }
 
 export function worstStatus(profiles: TestitemProfile[]): string {
+    if (profiles.length === 0) return 'skipped';
     let worst = profiles[0].status;
     for (const p of profiles) {
         if (statusSeverity(p.status) > statusSeverity(worst)) {

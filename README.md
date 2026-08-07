@@ -3,8 +3,12 @@
 > [!WARNING]
 > This action is under active development and its interface may change.
 
-A GitHub Action that renders a single CI job summary from the results of a
-Julia test-and-lint run:
+The reporting half of the
+[testitem-workflow](https://github.com/julia-testitems/testitem-workflow)
+reusable workflow: a GitHub Action that renders a single CI job summary from
+the results of a Julia test-and-lint run. It can also be used directly, but it
+is designed around the file formats and artifact flow of the other actions in
+that workflow:
 
 - **Test results**: a directory of JSON files written by
   [julia-run-testitems](https://github.com/julia-actions/julia-run-testitems)
@@ -17,9 +21,10 @@ Julia test-and-lint run:
 
 The action is pure TypeScript (`node20`) — it needs no Julia installation, no
 checkout, and no cache, and makes no GitHub API calls (so it needs no token
-and works on fork PRs). It writes the report to the job summary and fails the
-job when there are lint errors, failing test items, test definition errors, or
-no result files at all.
+and works on fork PRs). It writes the report to the job summary and (by
+default) fails the job when there are lint errors, failing test items, test
+definition errors, or no result files at all; each of those conditions can be
+made non-fatal via the `fail-on-*` inputs.
 
 Reports are truncated safely against GitHub's 1 MiB step-summary limit:
 per-block caps first (failure messages keep their head, raw output keeps its
@@ -49,12 +54,46 @@ report-results:
         lint-results-path: lintresults
 ```
 
+> [!IMPORTANT]
+> `merge-multiple: true` on the download steps is required: the action scans
+> `results-path` non-recursively, so all result files must land flat in one
+> directory. Without it, each artifact is placed in its own subdirectory and
+> the action finds no result files.
+
 ## Inputs
 
-| Input | Required | Description |
-| --- | --- | --- |
-| `results-path` | yes | Directory containing test-result `*.json` files. |
-| `lint-results-path` | no | Directory containing lint `*.sarif` file(s). May be missing or empty when lint was skipped. |
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `results-path` | yes | | Directory containing test-result `*.json` files. Files that are not test-result JSONs are skipped with a warning. |
+| `lint-results-path` | no | | Directory containing lint `*.sarif` file(s). May be missing or empty when lint was skipped. |
+| `fail-on-missing-results` | no | `true` | Fail the step when no test-result files are found. |
+| `fail-on-test-failures` | no | `true` | Fail the step when there are failing test items or test definition errors. |
+| `fail-on-lint-errors` | no | `true` | Fail the step when there are error-severity lint results. |
+
+## Outputs
+
+| Output | Description |
+| --- | --- |
+| `failed` | `true`/`false`: whether any CI issues were found (independent of the `fail-on-*` settings). |
+| `test-count` | Number of distinct test items in the report. |
+| `failed-count` | Number of test items with issues. |
+| `definition-error-count` | Number of test definition errors. |
+| `lint-error-count` | Number of error-severity lint results. |
+
+## File-format contracts
+
+- **Test results**: each `*.json` file must be in the format written by
+  `TestItemControllers.Results.write_json`
+  ([TestItemControllers](https://github.com/julia-vscode/TestItemControllers.jl)`/src/results.jl`),
+  which is what `julia-run-testitems`' `results-path` input produces.
+- **Profile names**: the per-OS compression of the summary works best when
+  profile names follow the convention `Julia <juliaup-channel>:<os>` (e.g.
+  `Julia 1.10.5~x64:ubuntu-latest`), which is what testitem-workflow passes to
+  `julia-run-testitems`' `profile-name` input. Other profile names are
+  rendered verbatim.
+- **Lint results**: SARIF as emitted by
+  [`julialint`](https://github.com/julia-vscode/JuliaLintApp.jl), with
+  repo-relative artifact URIs.
 
 ## Development
 

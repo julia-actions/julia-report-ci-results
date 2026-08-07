@@ -55,16 +55,41 @@ function listFiles(directory, extensions) {
         .filter(name => extensions.some(ext => name.toLowerCase().endsWith(ext)))
         .map(name => path.join(directory, name));
 }
+// Like core.getBooleanInput, but an empty/unset input falls back to the given
+// default instead of throwing.
+function getBoolInput(name, defaultValue) {
+    const raw = core.getInput(name).trim().toLowerCase();
+    if (raw === '')
+        return defaultValue;
+    if (raw === 'true')
+        return true;
+    if (raw === 'false')
+        return false;
+    throw new TypeError(`Input "${name}" must be 'true' or 'false', got '${raw}'`);
+}
 async function run() {
     const resultsPath = core.getInput('results-path', { required: true });
     const lintResultsPath = core.getInput('lint-results-path');
+    const failOnMissingResults = getBoolInput('fail-on-missing-results', true);
+    const failOnTestFailures = getBoolInput('fail-on-test-failures', true);
+    const failOnLintErrors = getBoolInput('fail-on-lint-errors', true);
     const ctx = {
         workspace: process.env.GITHUB_WORKSPACE,
         repository: process.env.GITHUB_REPOSITORY,
         sha: process.env.GITHUB_SHA,
+        serverUrl: process.env.GITHUB_SERVER_URL,
     };
-    const resultFiles = listFiles(resultsPath, ['.json']);
-    const parts = resultFiles.map(file => (0, testResults_1.parseTestrunResult)(JSON.parse(fs.readFileSync(file, 'utf8')), path.basename(file)));
+    // Skip files that are not test-result JSONs (with a warning) instead of
+    // failing the whole report on one stray file.
+    const parts = [];
+    for (const file of listFiles(resultsPath, ['.json'])) {
+        try {
+            parts.push((0, testResults_1.parseTestrunResult)(JSON.parse(fs.readFileSync(file, 'utf8')), path.basename(file)));
+        }
+        catch (error) {
+            core.warning(`Skipping ${path.basename(file)}: ${error.message}`);
+        }
+    }
     const results = (0, testResults_1.mergeResults)(parts);
     let lint = [];
     if (lintResultsPath !== '') {
@@ -72,19 +97,27 @@ async function run() {
             lint.push(...(0, sarif_1.parseSarifLog)(JSON.parse(fs.readFileSync(file, 'utf8')), path.basename(file)));
         }
     }
-    const { markdown, failOverall, truncated } = (0, render_1.renderSummary)({
+    const { markdown, failOverall, truncated, stats } = (0, render_1.renderSummary)({
         grouped: (0, testResults_1.groupTestitems)(results.testitems, ctx),
         definitionErrors: (0, testResults_1.normalizeDefinitionErrors)(results.definition_errors, ctx),
         processOutputs: results.process_outputs,
         lint,
-        noResultFiles: resultFiles.length === 0,
+        noResultFiles: parts.length === 0,
         ctx,
     });
     await core.summary.addRaw(markdown).write();
+    core.setOutput('failed', failOverall);
+    core.setOutput('test-count', stats.numTestitems);
+    core.setOutput('failed-count', stats.numFailed);
+    core.setOutput('definition-error-count', stats.numDefinitionErrors);
+    core.setOutput('lint-error-count', stats.numLintErrors);
     if (truncated) {
         core.warning('The CI report was truncated to stay under the step-summary size limit.');
     }
-    if (failOverall) {
+    const shouldFail = (failOnMissingResults && stats.noResultFiles) ||
+        (failOnTestFailures && (stats.numFailed > 0 || stats.numDefinitionErrors > 0)) ||
+        (failOnLintErrors && stats.numLintErrors > 0);
+    if (shouldFail) {
         core.setFailed('CI issues found — see the job summary for details.');
     }
 }
@@ -178,7 +211,8 @@ function githubBlobUrl(loc, line, ctx) {
         return null;
     }
     const fragment = line === null ? '' : `#L${line}`;
-    return `https://github.com/${ctx.repository}/blob/${ctx.sha}/${loc.relPath}${fragment}`;
+    const serverUrl = (ctx.serverUrl ?? 'https://github.com').replace(/\/+$/, '');
+    return `${serverUrl}/${ctx.repository}/blob/${ctx.sha}/${loc.relPath}${fragment}`;
 }
 // Rewrite the "Test Failed at <absolute runner path>" first line of a failure
 // message into a runner-independent form ("<repo>/<relpath>") so that
@@ -260,6 +294,8 @@ function statusSeverity(status) {
     return STATUS_SEVERITY[status] ?? 99;
 }
 function worstStatus(profiles) {
+    if (profiles.length === 0)
+        return 'skipped';
     let worst = profiles[0].status;
     for (const p of profiles) {
         if (statusSeverity(p.status) > statusSeverity(worst)) {
@@ -651,7 +687,18 @@ function renderSummary(input, budgetOptions = exports.DEFAULT_BUDGET) {
             truncated = true;
         }
     }
-    return { markdown: budget.toString(), failOverall, truncated };
+    return {
+        markdown: budget.toString(),
+        failOverall,
+        truncated,
+        stats: {
+            numTestitems,
+            numFailed,
+            numDefinitionErrors: definitionErrors.length,
+            numLintErrors: lintErrors,
+            noResultFiles,
+        },
+    };
 }
 
 

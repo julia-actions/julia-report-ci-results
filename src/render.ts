@@ -12,10 +12,19 @@ export interface RenderInput {
     ctx: PathContext;
 }
 
+export interface RenderStats {
+    numTestitems: number;
+    numFailed: number;
+    numDefinitionErrors: number;
+    numLintErrors: number;
+    noResultFiles: boolean;
+}
+
 export interface RenderOutput {
     markdown: string;
     failOverall: boolean;
     truncated: boolean;
+    stats: RenderStats;
 }
 
 export interface BudgetOptions {
@@ -347,5 +356,16 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
         }
     }
 
-    return { markdown: budget.toString(), failOverall, truncated };
+    return {
+        markdown: budget.toString(),
+        failOverall,
+        truncated,
+        stats: {
+            numTestitems,
+            numFailed,
+            numDefinitionErrors: definitionErrors.length,
+            numLintErrors: lintErrors,
+            noResultFiles,
+        },
+    };
 }

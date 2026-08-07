@@ -47,6 +47,7 @@ test('mixed forms all render', () => {
 test('worst status and non-failing classification', () => {
     assert.strictEqual(worstStatus([profile('passed'), profile('failed'), profile('timeout')]), 'timeout');
     assert.strictEqual(worstStatus([profile('passed'), profile('unknowable')]), 'unknowable');
+    assert.strictEqual(worstStatus([]), 'skipped');
     assert.ok(isNonFailing([profile('passed'), profile('skipped')]));
     assert.ok(!isNonFailing([profile('passed'), profile('failed')]));
     assert.strictEqual(statusEmoji('skipped'), '⏭️');

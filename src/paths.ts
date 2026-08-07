@@ -8,6 +8,7 @@ export interface PathContext {
     workspace?: string; // GITHUB_WORKSPACE
     repository?: string; // GITHUB_REPOSITORY, "owner/repo"
     sha?: string; // GITHUB_SHA
+    serverUrl?: string; // GITHUB_SERVER_URL, defaults to https://github.com
 }
 
 export type NormalizedLocation =
@@ -90,7 +91,8 @@ export function githubBlobUrl(loc: NormalizedLocation, line: number | null, ctx:
         return null;
     }
     const fragment = line === null ? '' : `#L${line}`;
-    return `https://github.com/${ctx.repository}/blob/${ctx.sha}/${loc.relPath}${fragment}`;
+    const serverUrl = (ctx.serverUrl ?? 'https://github.com').replace(/\/+$/, '');
+    return `${serverUrl}/${ctx.repository}/blob/${ctx.sha}/${loc.relPath}${fragment}`;
 }
 
 // Rewrite the "Test Failed at <absolute runner path>" first line of a failure

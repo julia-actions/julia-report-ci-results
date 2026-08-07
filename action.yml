@@ -7,6 +7,29 @@ inputs:
   lint-results-path:
     description: 'Directory containing lint *.sarif file(s); may be missing or empty if lint was skipped'
     required: false
+  fail-on-missing-results:
+    description: 'Fail the step when no test-result files are found'
+    required: false
+    default: true
+  fail-on-test-failures:
+    description: 'Fail the step when there are failing test items or test definition errors'
+    required: false
+    default: true
+  fail-on-lint-errors:
+    description: 'Fail the step when there are error-severity lint results'
+    required: false
+    default: true
+outputs:
+  failed:
+    description: 'Whether any CI issues were found (independent of the fail-on-* settings)'
+  test-count:
+    description: 'Number of distinct test items in the report'
+  failed-count:
+    description: 'Number of test items with issues'
+  definition-error-count:
+    description: 'Number of test definition errors'
+  lint-error-count:
+    description: 'Number of error-severity lint results'
 runs:
   using: 'node20'
   main: 'dist/index.js'
