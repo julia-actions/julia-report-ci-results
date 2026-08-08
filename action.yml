@@ -36,5 +36,5 @@ outputs:
   process-logs-artifact-id:
     description: 'Id of the uploaded test-process-logs artifact (empty when nothing was uploaded)'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
