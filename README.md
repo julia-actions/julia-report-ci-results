@@ -17,7 +17,7 @@ that workflow:
   deduplicated across profiles, and profile lists are compressed per OS.
 - **Lint results** (optional): a directory containing SARIF file(s) as
   produced by [julia-lint](https://github.com/julia-actions/julia-lint) /
-  [`julialint`](https://github.com/julia-vscode/JuliaLintApp.jl).
+  [`julialint`](https://github.com/julia-vscode/LintApp.jl).
 
 The action is pure TypeScript (`node20`) — it needs no Julia installation, no
 checkout, and no cache, and makes no GitHub API calls (so it needs no token
@@ -108,7 +108,7 @@ report-results:
   `julia-run-testitems`' `profile-name` input. Other profile names are
   rendered verbatim.
 - **Lint results**: SARIF as emitted by
-  [`julialint`](https://github.com/julia-vscode/JuliaLintApp.jl), with
+  [`julialint`](https://github.com/julia-vscode/LintApp.jl), with
   repo-relative artifact URIs.
 
 ## Development
