@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { compressProfileList, formatDuration, isNonFailing, statusEmoji, worstStatus } from '../src/profiles';
+import {
+    compressProfileList,
+    formatDuration,
+    hasAllowedFailure,
+    hasBlockingFailure,
+    isNonFailing,
+    statusEmoji,
+    worstStatus,
+} from '../src/profiles';
 import { TestitemProfile } from '../src/types';
 
 function profile(status: string, duration: number | null = null, name = 'p'): TestitemProfile {
@@ -60,4 +68,22 @@ test('duration formatting boundaries', () => {
     assert.strictEqual(formatDuration([profile('passed', 500), profile('passed', 500)]), '1.0 s');
     assert.strictEqual(formatDuration([profile('passed', 59_000)]), '59.0 s');
     assert.strictEqual(formatDuration([profile('passed', 90_000)]), '1.5 min');
+});
+
+test('failures on legs allowed to fail are separated from blocking ones', () => {
+    const blocking = profile('failed');
+    const allowed: TestitemProfile = { ...profile('failed', null, 'rc'), allowFailure: true };
+    const passed = profile('passed');
+    const skipped: TestitemProfile = { ...profile('skipped', null, 'rc'), allowFailure: true };
+
+    assert.strictEqual(hasBlockingFailure([passed, allowed]), false);
+    assert.strictEqual(hasAllowedFailure([passed, allowed]), true);
+
+    assert.strictEqual(hasBlockingFailure([blocking, allowed]), true);
+    assert.strictEqual(hasAllowedFailure([blocking, allowed]), true);
+
+    // An unstamped profile is blocking, and a skip is not a failure either way.
+    assert.strictEqual(hasBlockingFailure([blocking]), true);
+    assert.strictEqual(hasBlockingFailure([passed, skipped]), false);
+    assert.strictEqual(hasAllowedFailure([passed, skipped]), false);
 });

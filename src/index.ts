@@ -42,6 +42,7 @@ function getIntInput(name: string): number | null {
 async function run(): Promise<void> {
     const resultsPath = core.getInput('results-path', { required: true });
     const lintResultsPath = core.getInput('lint-results-path');
+    const allowedFailureResultsPath = core.getInput('allowed-failure-results-path');
     const failOnMissingResults = getBoolInput('fail-on-missing-results', true);
     const failOnTestFailures = getBoolInput('fail-on-test-failures', true);
     const failOnLintErrors = getBoolInput('fail-on-lint-errors', true);
@@ -57,13 +58,23 @@ async function run(): Promise<void> {
     // Skip files that are not test-result JSONs (with a warning) instead of
     // failing the whole report on one stray file.
     const parts: ResultFile[] = [];
-    for (const file of listFiles(resultsPath, ['.json'])) {
-        const fileName = path.basename(file);
-        try {
-            parts.push({ fileName, result: parseTestrunResult(JSON.parse(fs.readFileSync(file, 'utf8')), fileName) });
-        } catch (error) {
-            core.warning(`Skipping ${fileName}: ${(error as Error).message}`);
+    function readResults(directory: string, allowFailure: boolean): number {
+        let read = 0;
+        for (const file of listFiles(directory, ['.json'])) {
+            const fileName = path.basename(file);
+            try {
+                const result = parseTestrunResult(JSON.parse(fs.readFileSync(file, 'utf8')), fileName);
+                parts.push({ fileName, result, allowFailure });
+                read += 1;
+            } catch (error) {
+                core.warning(`Skipping ${fileName}: ${(error as Error).message}`);
+            }
         }
+        return read;
+    }
+    const numBlockingFiles = readResults(resultsPath, false);
+    if (allowedFailureResultsPath !== '') {
+        readResults(allowedFailureResultsPath, true);
     }
     const results = mergeResults(parts);
 
@@ -84,6 +95,7 @@ async function run(): Promise<void> {
         processLogsUrl: logs?.url ?? null,
         lint,
         noResultFiles: parts.length === 0,
+        noBlockingResultFiles: numBlockingFiles === 0,
         ctx,
     });
 
@@ -93,6 +105,7 @@ async function run(): Promise<void> {
     core.setOutput('process-logs-artifact-id', logs?.artifactId ?? '');
     core.setOutput('test-count', stats.numTestitems);
     core.setOutput('failed-count', stats.numFailed);
+    core.setOutput('allowed-failure-count', stats.numAllowedFailures);
     core.setOutput('definition-error-count', stats.numDefinitionErrors);
     core.setOutput('lint-error-count', stats.numLintErrors);
 
@@ -102,7 +115,7 @@ async function run(): Promise<void> {
 
     const shouldFail =
         (failOnMissingResults && stats.noResultFiles) ||
-        (failOnTestFailures && (stats.numFailed > 0 || stats.numDefinitionErrors > 0)) ||
+        (failOnTestFailures && (stats.numFailed > 0 || stats.numBlockingDefinitionErrors > 0)) ||
         (failOnLintErrors && stats.numLintErrors > 0);
     if (shouldFail) {
         core.setFailed('CI issues found — see the job summary for details.');

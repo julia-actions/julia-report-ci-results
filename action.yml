@@ -7,8 +7,13 @@ inputs:
   lint-results-path:
     description: 'Directory containing lint *.sarif file(s); may be missing or empty if lint was skipped'
     required: false
+  allowed-failure-results-path:
+    description: >-
+      Directory containing test-result *.json files from matrix legs that are allowed to fail.
+      Their failures are reported but never fail the step; may be missing or empty.
+    required: false
   fail-on-missing-results:
-    description: 'Fail the step when no test-result files are found'
+    description: 'Fail the step when no test-result files are found in results-path'
     required: false
     default: true
   fail-on-test-failures:
@@ -28,7 +33,9 @@ outputs:
   test-count:
     description: 'Number of distinct test items in the report'
   failed-count:
-    description: 'Number of test items with issues'
+    description: 'Number of test items with issues on a leg that must pass'
+  allowed-failure-count:
+    description: 'Number of test items whose only issues are on legs allowed to fail'
   definition-error-count:
     description: 'Number of test definition errors'
   lint-error-count:

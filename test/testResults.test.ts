@@ -6,8 +6,8 @@ import { TestrunResult } from '../src/types';
 const linuxUri = 'file:///home/runner/work/MyRepo/MyRepo/test/a.jl';
 const windowsUri = 'file:///d:/a/MyRepo/MyRepo/test/a.jl';
 
-function resultFile(result: TestrunResult, fileName = 'results.json'): ResultFile {
-    return { fileName, result };
+function resultFile(result: TestrunResult, fileName = 'results.json', allowFailure = false): ResultFile {
+    return { fileName, result, allowFailure };
 }
 
 function resultFixture(profileName: string, status: string, uri: string): TestrunResult {
@@ -106,4 +106,28 @@ test('whitespace-only process outputs are dropped and duplicate ids deduped', ()
     b.process_outputs = { dup: 'from b' };
     const merged = mergeResults([resultFile(a, 'a.json'), resultFile(b, 'b.json')]);
     assert.deepStrictEqual(merged.processOutputs, [{ id: 'dup', label: 'p2', output: 'from b' }]);
+});
+
+test('merge stamps allow-failure from the file it came from', () => {
+    const blocking = resultFixture('Julia 1.11~x64:ubuntu-latest', 'passed', linuxUri);
+    const allowed = resultFixture('Julia rc~x64:ubuntu-latest', 'failed', linuxUri);
+    allowed.definition_errors.push({ message: 'bad @testitem', uri: linuxUri, line: 1, column: 1 });
+
+    const merged = mergeResults([
+        resultFile(blocking, 'blocking.json', false),
+        resultFile(allowed, 'allowfail.json', true),
+    ]);
+
+    const stamped = merged.testitems.flatMap(ti => ti.profiles).map(p => [p.profile_name, p.allowFailure]);
+    assert.deepStrictEqual(stamped, [
+        ['Julia 1.11~x64:ubuntu-latest', false],
+        ['Julia rc~x64:ubuntu-latest', true],
+    ]);
+    assert.deepStrictEqual(merged.definition_errors.map(e => e.allowFailure), [true]);
+});
+
+test('merge does not mutate the parsed result files', () => {
+    const source = resultFixture('Julia rc~x64:ubuntu-latest', 'failed', linuxUri);
+    mergeResults([resultFile(source, 'allowfail.json', true)]);
+    assert.strictEqual('allowFailure' in source.testitems[0].profiles[0], false);
 });
