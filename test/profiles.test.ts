@@ -49,7 +49,26 @@ test('unmatched names pass through unique', () => {
 
 test('mixed forms all render', () => {
     const s = compressProfileList(['Julia 1.10.5~x64:linux', 'Julia lts:linux', 'custom']);
-    assert.strictEqual(s, 'linux (1.10.5\\~x64), linux (lts), custom');
+    assert.strictEqual(s, 'linux (1.10.5\\~x64, lts), custom');
+});
+
+test('compresses pre-release channel~arch names like versions', () => {
+    const s = compressProfileList([
+        'Julia rc~x64:ubuntu-latest',
+        'Julia rc~x86:ubuntu-latest',
+        'Julia nightly~x64:ubuntu-latest',
+        'Julia rc~aarch64:macos-26',
+    ]);
+    assert.strictEqual(s, 'macos-26 (rc\\~aarch64), ubuntu-latest (nightly\\~x64, rc\\~x64\\~x86)');
+});
+
+test('versions and named channels on one os share a single group, versions first', () => {
+    const s = compressProfileList([
+        'Julia rc~x64:ubuntu-latest',
+        'Julia 1.12.7~x64:ubuntu-latest',
+        'Julia 1.10.5~x64:ubuntu-latest',
+    ]);
+    assert.strictEqual(s, 'ubuntu-latest (1.10.5\\~x64, 1.12.7\\~x64, rc\\~x64)');
 });
 
 test('worst status and non-failing classification', () => {

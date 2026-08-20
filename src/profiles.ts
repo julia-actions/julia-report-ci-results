@@ -78,7 +78,11 @@ export function formatDuration(profiles: TestitemProfile[]): string {
 }
 
 const VERSION_ARCH_PATTERN = /^Julia (\d+\.\d+\.\d+)~([^:]*):(.*)$/;
+// Pre-release legs carry an arch too, but their channel is a name rather than a version.
+const CHANNEL_ARCH_PATTERN = /^Julia ([^:~]+)~([^:]*):(.*)$/;
 const CHANNEL_PATTERN = /^Julia ([^:~]+):(.*)$/;
+
+const VERSION_LIKE = /^\d+(\.\d+)*$/;
 
 function compareVersions(a: string, b: string): number {
     const pa = a.split('.').map(Number);
@@ -92,6 +96,17 @@ function compareVersions(a: string, b: string): number {
     return 0;
 }
 
+// Versions in numeric order first, then named channels alphabetically, so a matrix
+// reads "1.10.5~x64, 1.12.7~x64, rc~x64" rather than by discovery order.
+function compareChannels(a: string, b: string): number {
+    const aVersion = VERSION_LIKE.test(a);
+    const bVersion = VERSION_LIKE.test(b);
+    if (aVersion !== bVersion) {
+        return aVersion ? -1 : 1;
+    }
+    return aVersion ? compareVersions(a, b) : a.localeCompare(b);
+}
+
 function unique<T>(items: T[]): T[] {
     return [...new Set(items)];
 }
@@ -99,23 +114,28 @@ function unique<T>(items: T[]): T[] {
 // Compress a list of profile names into a compact per-OS form, e.g.
 //   ["Julia 1.10.5~x64:ubuntu-latest", "Julia 1.10.5~x86:ubuntu-latest"]
 //     -> "ubuntu-latest (1.10.5~x64~x86)"
+//   ["Julia rc~x64:ubuntu-latest", "Julia 1.10.5~x64:ubuntu-latest"]
+//     -> "ubuntu-latest (1.10.5~x64, rc~x64)"
 //   ["Julia 1.10:ubuntu-latest", "Julia lts:ubuntu-latest"]
 //     -> "ubuntu-latest (1.10, lts)"
 // Unrecognized names pass through unchanged. `~` is escaped for Markdown.
 export function compressProfileList(profileNames: string[]): string {
-    const versionArch: { version: string; arch: string; os: string }[] = [];
-    const channel: { channel: string; os: string }[] = [];
+    // A leg is identified by a channel — a version like "1.10.5" or a name like "rc" —
+    // optionally carrying an arch. Both kinds group under the same OS so one runner
+    // never yields two parenthesized groups.
+    const legs: { channel: string; arch: string | null; os: string }[] = [];
     const unmatched: string[] = [];
 
     for (const name of profileNames) {
-        const mv = name.match(VERSION_ARCH_PATTERN);
+        // Versions are tried first so a numeric channel keeps its version ordering.
+        const mv = name.match(VERSION_ARCH_PATTERN) ?? name.match(CHANNEL_ARCH_PATTERN);
         if (mv !== null) {
-            versionArch.push({ version: mv[1], arch: mv[2], os: mv[3] });
+            legs.push({ channel: mv[1], arch: mv[2], os: mv[3] });
             continue;
         }
         const mc = name.match(CHANNEL_PATTERN);
         if (mc !== null) {
-            channel.push({ channel: mc[1], os: mc[2] });
+            legs.push({ channel: mc[1], arch: null, os: mc[2] });
             continue;
         }
         unmatched.push(name);
@@ -123,30 +143,24 @@ export function compressProfileList(profileNames: string[]): string {
 
     const parts: string[] = [];
 
-    if (versionArch.length > 0) {
-        // os -> version -> archs
+    if (legs.length > 0) {
+        // os -> channel -> archs (empty for a channel named without one)
         const byOs = new Map<string, Map<string, string[]>>();
-        for (const { version, arch, os } of versionArch) {
-            const byVersion = byOs.get(os) ?? new Map<string, string[]>();
-            byOs.set(os, byVersion);
-            byVersion.set(version, [...(byVersion.get(version) ?? []), arch]);
+        for (const { channel, arch, os } of legs) {
+            const byChannel = byOs.get(os) ?? new Map<string, string[]>();
+            byOs.set(os, byChannel);
+            const archs = byChannel.get(channel) ?? [];
+            byChannel.set(channel, arch === null ? archs : [...archs, arch]);
         }
         for (const os of [...byOs.keys()].sort()) {
-            const byVersion = byOs.get(os)!;
-            const versionStrings = [...byVersion.keys()]
-                .sort(compareVersions)
-                .map(v => `${v}~${unique(byVersion.get(v)!).join('~')}`);
-            parts.push(`${os} (${versionStrings.join(', ')})`);
-        }
-    }
-
-    if (channel.length > 0) {
-        const byOs = new Map<string, string[]>();
-        for (const { channel: ch, os } of channel) {
-            byOs.set(os, [...(byOs.get(os) ?? []), ch]);
-        }
-        for (const os of [...byOs.keys()].sort()) {
-            parts.push(`${os} (${unique(byOs.get(os)!).join(', ')})`);
+            const byChannel = byOs.get(os)!;
+            const channelStrings = [...byChannel.keys()]
+                .sort(compareChannels)
+                .map(c => {
+                    const archs = unique(byChannel.get(c)!);
+                    return archs.length === 0 ? c : `${c}~${archs.join('~')}`;
+                });
+            parts.push(`${os} (${channelStrings.join(', ')})`);
         }
     }
 
