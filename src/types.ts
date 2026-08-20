@@ -27,6 +27,9 @@ export interface TestitemProfile {
     duration: number | null; // milliseconds
     messages: TestMessage[] | null;
     output: string | null;
+    // Stamped by mergeResults from the directory the result file came from;
+    // not part of the on-disk schema. Absent means blocking.
+    allowFailure?: boolean;
 }
 
 export interface Testitem {

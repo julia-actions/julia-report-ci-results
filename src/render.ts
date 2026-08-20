@@ -2,7 +2,16 @@ import { LintDiagnostic, ProcessOutput, TestMessage, TestitemProfile } from './t
 import { GroupedTestitem, DefinitionErrorWithLocation } from './testResults';
 import { LOGS_ARTIFACT_NAME, shortId } from './artifacts';
 import { NormalizedLocation, PathContext, agnosticMessage, displayPath, githubBlobUrl, normalizeFileUri } from './paths';
-import { compressProfileList, formatDuration, isNonFailing, statusEmoji, statusSeverity, worstStatus } from './profiles';
+import {
+    compressProfileList,
+    formatDuration,
+    hasAllowedFailure,
+    hasBlockingFailure,
+    isNonFailing,
+    statusEmoji,
+    statusSeverity,
+    worstStatus,
+} from './profiles';
 
 export interface RenderInput {
     grouped: GroupedTestitem[];
@@ -11,13 +20,18 @@ export interface RenderInput {
     processLogsUrl: string | null;
     lint: LintDiagnostic[];
     noResultFiles: boolean;
+    // No results from the legs that must pass. Defaults to noResultFiles; the two differ
+    // only when every blocking leg died and an allowed-to-fail leg still reported.
+    noBlockingResultFiles?: boolean;
     ctx: PathContext;
 }
 
 export interface RenderStats {
     numTestitems: number;
     numFailed: number;
+    numAllowedFailures: number;
     numDefinitionErrors: number;
+    numBlockingDefinitionErrors: number;
     numLintErrors: number;
     noResultFiles: boolean;
 }
@@ -153,11 +167,19 @@ function deduplicateMessages(profiles: TestitemProfile[], ctx: PathContext): Ded
     return [...byKey.values()];
 }
 
+// A test item whose only failures are on legs allowed to fail reads as a warning.
+function itemEmoji(ti: GroupedTestitem): string {
+    if (isNonFailing(ti.profiles) || hasBlockingFailure(ti.profiles)) {
+        return statusEmoji(worstStatus(ti.profiles));
+    }
+    return '⚠️';
+}
+
 function renderTestitemDetails(ti: GroupedTestitem, input: RenderInput, budget: BudgetOptions): string {
     const { ctx } = input;
     const lines: string[] = [];
     const allPassed = isNonFailing(ti.profiles);
-    const emoji = statusEmoji(worstStatus(ti.profiles));
+    const emoji = itemEmoji(ti);
 
     lines.push(`<details${allPassed ? '' : ' open'}>`);
     lines.push(`<summary>${emoji} <strong>${ti.name}</strong> — <code>${displayPath(ti.location)}</code></summary>`);
@@ -174,30 +196,39 @@ function renderTestitemDetails(ti: GroupedTestitem, input: RenderInput, budget: 
             lines.push('>');
         }
 
-        // Group by status, least severe first.
-        const statuses = [...new Set(notPassed.map(p => p.status))].sort(
-            (a, b) => statusSeverity(a) - statusSeverity(b)
-        );
-        for (const status of statuses) {
-            const group = notPassed.filter(p => p.status === status);
-            lines.push(`> ### ${statusEmoji(status)} ${status.charAt(0).toUpperCase()}${status.slice(1)}`);
-            lines.push(`> **Profiles:** ${compressProfileList(group.map(p => p.profile_name))}`);
-            lines.push('>');
+        // Blocking legs first, then the ones allowed to fail; within each, group by
+        // status, least severe first.
+        const sections: { profiles: TestitemProfile[]; suffix: string }[] = [
+            { profiles: notPassed.filter(p => p.allowFailure !== true), suffix: '' },
+            { profiles: notPassed.filter(p => p.allowFailure === true), suffix: ' (allowed to fail)' },
+        ];
+        for (const section of sections) {
+            const statuses = [...new Set(section.profiles.map(p => p.status))].sort(
+                (a, b) => statusSeverity(a) - statusSeverity(b)
+            );
+            for (const status of statuses) {
+                const group = section.profiles.filter(p => p.status === status);
+                lines.push(
+                    `> ### ${statusEmoji(status)} ${status.charAt(0).toUpperCase()}${status.slice(1)}${section.suffix}`
+                );
+                lines.push(`> **Profiles:** ${compressProfileList(group.map(p => p.profile_name))}`);
+                lines.push('>');
 
-            for (const msg of deduplicateMessages(group, ctx)) {
-                lines.push(`> **${locationMarkdown(msg.location, msg.line, ctx)}** on ${compressProfileList(msg.profileNames)}`);
-                lines.push('>');
-                lines.push('> ```');
-                lines.push(quoteBlock(truncateHead(msg.message, budget.messageBytes)));
-                lines.push('> ```');
-                lines.push('>');
-                if (msg.stackFrames !== null && msg.stackFrames.length > 0) {
-                    lines.push('> **Stack trace:**');
-                    for (const frame of msg.stackFrames) {
-                        const frameLocation = normalizeFileUri(frame.uri, ctx);
-                        lines.push(`> - \`${frame.label}\` at ${locationMarkdown(frameLocation, frame.line, ctx)}`);
-                    }
+                for (const msg of deduplicateMessages(group, ctx)) {
+                    lines.push(`> **${locationMarkdown(msg.location, msg.line, ctx)}** on ${compressProfileList(msg.profileNames)}`);
                     lines.push('>');
+                    lines.push('> ```');
+                    lines.push(quoteBlock(truncateHead(msg.message, budget.messageBytes)));
+                    lines.push('> ```');
+                    lines.push('>');
+                    if (msg.stackFrames !== null && msg.stackFrames.length > 0) {
+                        lines.push('> **Stack trace:**');
+                        for (const frame of msg.stackFrames) {
+                            const frameLocation = normalizeFileUri(frame.uri, ctx);
+                            lines.push(`> - \`${frame.label}\` at ${locationMarkdown(frameLocation, frame.line, ctx)}`);
+                        }
+                        lines.push('>');
+                    }
                 }
             }
         }
@@ -224,16 +255,21 @@ function renderTestitemDetails(ti: GroupedTestitem, input: RenderInput, budget: 
 }
 
 export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions = DEFAULT_BUDGET): RenderOutput {
-    const { grouped, definitionErrors, processOutputs, processLogsUrl, lint, noResultFiles, ctx } = input;
+    const { grouped, definitionErrors, processOutputs, processLogsUrl, lint, noResultFiles, noBlockingResultFiles, ctx } =
+        input;
 
     const lintErrors = lint.filter(d => d.level === 'error').length;
     const lintWarnings = lint.filter(d => d.level === 'warning').length;
 
     const numTestitems = grouped.length;
     const numPassed = grouped.filter(ti => isNonFailing(ti.profiles)).length;
-    const numFailed = numTestitems - numPassed;
+    const numFailed = grouped.filter(ti => hasBlockingFailure(ti.profiles)).length;
+    const numAllowedFailures = numTestitems - numPassed - numFailed;
+    const blockingDefinitionErrors = definitionErrors.filter(e => e.allowFailure !== true);
+    const missingResults = noBlockingResultFiles ?? noResultFiles;
 
-    const failOverall = lintErrors > 0 || numFailed > 0 || definitionErrors.length > 0 || noResultFiles;
+    const failOverall =
+        lintErrors > 0 || numFailed > 0 || blockingDefinitionErrors.length > 0 || missingResults;
 
     const budget = new Budget(budgetOptions.totalBytes);
     let truncated = false;
@@ -242,21 +278,31 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
     const statsParts: string[] = [`**${numTestitems}** test items`];
     if (numPassed > 0) statsParts.push(`**${numPassed}** passed`);
     if (numFailed > 0) statsParts.push(`**${numFailed}** with issues`);
+    if (numAllowedFailures > 0)
+        statsParts.push(`**${numAllowedFailures}** with issues on legs allowed to fail`);
     if (definitionErrors.length > 0) statsParts.push(`**${definitionErrors.length}** definition errors`);
     if (lint.length > 0) statsParts.push(`**${lint.length}** lint messages`);
 
     const banner = failOverall ? '# ❌ CI Report — Issues Found' : '# ✅ CI Report — All Checks Passed';
     budget.forceAppend(`${banner}\n> ${statsParts.join(' · ')}\n\n`);
 
+    if (numAllowedFailures > 0) {
+        budget.forceAppend('> ⚠️ Some test items failed only on legs that are allowed to fail, so they do not fail this job.\n\n');
+    }
+
     if (noResultFiles) {
         budget.forceAppend('> ⚠️ **No test result files were found.** This usually means the test jobs failed before writing results or the artifact upload/download broke.\n\n');
+    } else if (missingResults) {
+        budget.forceAppend('> ⚠️ **Only legs allowed to fail reported results.** Every leg that must pass failed before writing results, or its artifact upload/download broke.\n\n');
     }
 
     // ── Definition errors ─────────────────────────────────────────────────
     if (definitionErrors.length > 0) {
         const lines = ['## 🚫 Test Definition Errors', '', '| | Location | Message |', '|---|---|---|'];
         for (const e of definitionErrors) {
-            lines.push(`| ❌ | ${locationMarkdown(e.location, e.line, ctx)} | ${escapeTableCell(e.message)} |`);
+            lines.push(
+                `| ${e.allowFailure === true ? '⚠️' : '❌'} | ${locationMarkdown(e.location, e.line, ctx)} | ${escapeTableCell(e.message)} |`
+            );
         }
         lines.push('', '');
         if (!budget.tryAppend(lines.join('\n'))) {
@@ -311,7 +357,7 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
         const lines = ['## 📋 Test Summary', '', '| | Test Item | File | Duration | Profiles |', '|---|---|---|---|---|'];
         for (const ti of shown) {
             lines.push(
-                `| ${statusEmoji(worstStatus(ti.profiles))} | **${escapeTableCell(ti.name)}** | ${escapeTableCell(displayPath(ti.location))} | ${formatDuration(ti.profiles)} | ${escapeTableCell(compressProfileList(ti.profiles.map(p => p.profile_name)))} |`
+                `| ${itemEmoji(ti)} | **${escapeTableCell(ti.name)}** | ${escapeTableCell(displayPath(ti.location))} | ${formatDuration(ti.profiles)} | ${escapeTableCell(compressProfileList(ti.profiles.map(p => p.profile_name)))} |`
             );
         }
         if (shown.length < grouped.length) {
@@ -403,9 +449,11 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
         stats: {
             numTestitems,
             numFailed,
+            numAllowedFailures,
             numDefinitionErrors: definitionErrors.length,
+            numBlockingDefinitionErrors: blockingDefinitionErrors.length,
             numLintErrors: lintErrors,
-            noResultFiles,
+            noResultFiles: missingResults,
         },
     };
 }

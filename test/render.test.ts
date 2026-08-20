@@ -89,7 +89,7 @@ test('mixed run dedups identical failures across profiles and renders stack trac
 
 test('definition errors render and fail the run', () => {
     const definitionErrors = normalizeDefinitionErrors(
-        [{ message: 'bad @testitem', uri, line: 3, column: 1 }],
+        [{ message: 'bad @testitem', uri, line: 3, column: 1, allowFailure: false }],
         ctx
     );
     const { markdown, failOverall } = render({ definitionErrors });
@@ -241,4 +241,73 @@ test('lint row cap marks the report as truncated', () => {
     const budget = { ...DEFAULT_BUDGET, maxLintRows: 1 };
     const { truncated } = render({ lint }, budget);
     assert.strictEqual(truncated, true);
+});
+
+test('a test item failing only on a leg allowed to fail does not fail the run', () => {
+    const grouped = groupTestitems(
+        [
+            testitem('t1', [
+                profile('passed'),
+                profile('failed', { profile_name: 'Julia rc~x64:ubuntu-latest', allowFailure: true }),
+            ]),
+        ],
+        ctx
+    );
+    const { markdown, failOverall, stats } = render({ grouped });
+    assert.strictEqual(failOverall, false);
+    assert.strictEqual(stats.numFailed, 0);
+    assert.strictEqual(stats.numAllowedFailures, 1);
+    assert.match(markdown, /# ✅ CI Report — All Checks Passed/);
+    assert.match(markdown, /\*\*1\*\* with issues on legs allowed to fail/);
+    assert.match(markdown, /failed only on legs that are allowed to fail/);
+    assert.match(markdown, /### ❌ Failed \(allowed to fail\)/);
+    // The summary-table row warns too, rather than showing a failure.
+    assert.match(markdown, /\| ⚠️ \| \*\*t1\*\*/);
+});
+
+test('the same failure on a blocking leg does fail the run', () => {
+    const grouped = groupTestitems(
+        [
+            testitem('t1', [
+                profile('failed'),
+                profile('failed', { profile_name: 'Julia rc~x64:ubuntu-latest', allowFailure: true }),
+            ]),
+        ],
+        ctx
+    );
+    const { markdown, failOverall, stats } = render({ grouped });
+    assert.strictEqual(failOverall, true);
+    assert.strictEqual(stats.numFailed, 1);
+    assert.strictEqual(stats.numAllowedFailures, 0);
+    // Both sections render, the blocking one without the suffix.
+    assert.match(markdown, /### ❌ Failed\n/);
+    assert.match(markdown, /### ❌ Failed \(allowed to fail\)/);
+});
+
+test('a definition error on a leg allowed to fail is reported but not fatal', () => {
+    const definitionErrors = normalizeDefinitionErrors(
+        [{ message: 'bad @testitem', uri, line: 3, column: 1, allowFailure: true }],
+        ctx
+    );
+    const { markdown, failOverall, stats } = render({ definitionErrors });
+    assert.strictEqual(failOverall, false);
+    assert.strictEqual(stats.numDefinitionErrors, 1);
+    assert.strictEqual(stats.numBlockingDefinitionErrors, 0);
+    assert.match(markdown, /Test Definition Errors/);
+    assert.match(markdown, /\| ⚠️ \|/);
+});
+
+test('results from only the allowed-to-fail legs count as missing results', () => {
+    const grouped = groupTestitems(
+        [testitem('t1', [profile('passed', { allowFailure: true })])],
+        ctx
+    );
+    const { markdown, failOverall, stats } = render({
+        grouped,
+        noResultFiles: false,
+        noBlockingResultFiles: true,
+    });
+    assert.strictEqual(failOverall, true);
+    assert.strictEqual(stats.noResultFiles, true);
+    assert.match(markdown, /Only legs allowed to fail reported results/);
 });

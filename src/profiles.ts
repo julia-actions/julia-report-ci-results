@@ -48,6 +48,20 @@ export function isNonFailing(profiles: TestitemProfile[]): boolean {
     return profiles.every(p => p.status === 'passed' || p.status === 'skipped');
 }
 
+function isFailing(profile: TestitemProfile): boolean {
+    return profile.status !== 'passed' && profile.status !== 'skipped';
+}
+
+// A failure on a leg that is allowed to fail is reported but never fails the job, so
+// "did this test item fail" has two answers: one for the reader, one for the exit code.
+export function hasBlockingFailure(profiles: TestitemProfile[]): boolean {
+    return profiles.some(p => isFailing(p) && p.allowFailure !== true);
+}
+
+export function hasAllowedFailure(profiles: TestitemProfile[]): boolean {
+    return profiles.some(p => isFailing(p) && p.allowFailure === true);
+}
+
 export function formatDuration(profiles: TestitemProfile[]): string {
     const durations = profiles.map(p => p.duration).filter((d): d is number => d !== null);
     if (durations.length === 0) {
