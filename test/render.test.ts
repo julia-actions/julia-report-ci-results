@@ -311,3 +311,55 @@ test('results from only the allowed-to-fail legs count as missing results', () =
     assert.strictEqual(stats.noResultFiles, true);
     assert.match(markdown, /Only legs allowed to fail reported results/);
 });
+
+test('a missing blocking leg fails the report and is named in the summary', () => {
+    const out = render({
+        grouped: groupTestitems([testitem('a', [profile('passed')])], ctx),
+        missingProfiles: [
+            { name: 'Julia 1.11~x64:windows-latest', allowFailure: false },
+            { name: 'Julia lts~x86:ubuntu-latest', allowFailure: false },
+        ],
+    });
+    assert.strictEqual(out.failOverall, true);
+    assert.strictEqual(out.stats.numMissingBlockingProfiles, 2);
+    assert.deepStrictEqual(out.stats.missingProfileNames, [
+        'Julia 1.11~x64:windows-latest',
+        'Julia lts~x86:ubuntu-latest',
+    ]);
+    assert.match(out.markdown, /# ❌ CI Report/);
+    assert.match(out.markdown, /2 legs that must pass reported no results/);
+    assert.match(out.markdown, /`Julia 1.11~x64:windows-latest`, `Julia lts~x86:ubuntu-latest`/);
+    assert.match(out.markdown, /\*\*2\*\* legs missing/);
+});
+
+test('a missing leg that is allowed to fail is reported without failing the report', () => {
+    const out = render({
+        grouped: groupTestitems([testitem('a', [profile('passed')])], ctx),
+        missingProfiles: [{ name: 'Julia rc~x64:macos-latest', allowFailure: true }],
+    });
+    assert.strictEqual(out.failOverall, false);
+    assert.strictEqual(out.stats.numMissingBlockingProfiles, 0);
+    assert.deepStrictEqual(out.stats.missingProfileNames, ['Julia rc~x64:macos-latest']);
+    assert.match(out.markdown, /1 leg allowed to fail reported no results/);
+    assert.doesNotMatch(out.markdown, /that must pass reported no results/);
+});
+
+test('blocking missing legs are listed before allowed ones', () => {
+    const out = render({
+        grouped: groupTestitems([testitem('a', [profile('passed')])], ctx),
+        missingProfiles: [
+            { name: 'allowed', allowFailure: true },
+            { name: 'blocking', allowFailure: false },
+        ],
+    });
+    assert.deepStrictEqual(out.stats.missingProfileNames, ['blocking', 'allowed']);
+});
+
+test('no expected profiles means no missing-leg reporting at all', () => {
+    const out = render({ grouped: groupTestitems([testitem('a', [profile('passed')])], ctx) });
+    assert.strictEqual(out.failOverall, false);
+    assert.deepStrictEqual(out.stats.missingProfileNames, []);
+    assert.strictEqual(out.stats.numMissingBlockingProfiles, 0);
+    assert.doesNotMatch(out.markdown, /reported no results/);
+    assert.doesNotMatch(out.markdown, /legs missing/);
+});

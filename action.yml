@@ -12,8 +12,18 @@ inputs:
       Directory containing test-result *.json files from matrix legs that are allowed to fail.
       Their failures are reported but never fail the step; may be missing or empty.
     required: false
+  expected-profiles:
+    description: >-
+      JSON array of {"name": <profile name>, "allowFailure": <bool>} describing the matrix
+      legs this run should have heard from. A leg that reported nothing is then called out
+      in the summary instead of being silently left out of it, which is what a partial
+      "Re-run failed jobs" looks like when an artifact is missing. Empty (the default)
+      disables the check.
+    required: false
   fail-on-missing-results:
-    description: 'Fail the step when no test-result files are found in results-path'
+    description: >-
+      Fail the step when no test-result files are found in results-path, or when a leg
+      listed in expected-profiles that is not allowed to fail reported nothing
     required: false
     default: true
   fail-on-test-failures:
@@ -40,6 +50,8 @@ outputs:
     description: 'Number of test definition errors'
   lint-error-count:
     description: 'Number of error-severity lint results'
+  missing-profiles:
+    description: 'Comma-separated names of expected profiles that reported no results (blocking ones first)'
   process-logs-artifact-id:
     description: 'Id of the uploaded test-process-logs artifact (empty when nothing was uploaded)'
 runs:

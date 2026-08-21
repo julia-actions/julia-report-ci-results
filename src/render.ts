@@ -1,4 +1,4 @@
-import { LintDiagnostic, ProcessOutput, TestMessage, TestitemProfile } from './types';
+import { ExpectedProfile, LintDiagnostic, ProcessOutput, TestMessage, TestitemProfile } from './types';
 import { GroupedTestitem, DefinitionErrorWithLocation } from './testResults';
 import { LOGS_ARTIFACT_NAME, shortId } from './artifacts';
 import { NormalizedLocation, PathContext, agnosticMessage, displayPath, githubBlobUrl, normalizeFileUri } from './paths';
@@ -23,6 +23,9 @@ export interface RenderInput {
     // No results from the legs that must pass. Defaults to noResultFiles; the two differ
     // only when every blocking leg died and an allowed-to-fail leg still reported.
     noBlockingResultFiles?: boolean;
+    // Legs the caller expected to hear from that reported nothing. Empty when the
+    // caller passes no expected set, which is how this behaved before.
+    missingProfiles?: ExpectedProfile[];
     ctx: PathContext;
 }
 
@@ -34,6 +37,9 @@ export interface RenderStats {
     numBlockingDefinitionErrors: number;
     numLintErrors: number;
     noResultFiles: boolean;
+    // Names only, blocking first, for the caller's `missing-profiles` output.
+    missingProfileNames: string[];
+    numMissingBlockingProfiles: number;
 }
 
 export interface RenderOutput {
@@ -257,6 +263,9 @@ function renderTestitemDetails(ti: GroupedTestitem, input: RenderInput, budget: 
 export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions = DEFAULT_BUDGET): RenderOutput {
     const { grouped, definitionErrors, processOutputs, processLogsUrl, lint, noResultFiles, noBlockingResultFiles, ctx } =
         input;
+    const missingProfiles = input.missingProfiles ?? [];
+    const missingBlocking = missingProfiles.filter(p => !p.allowFailure);
+    const missingAllowed = missingProfiles.filter(p => p.allowFailure);
 
     const lintErrors = lint.filter(d => d.level === 'error').length;
     const lintWarnings = lint.filter(d => d.level === 'warning').length;
@@ -269,7 +278,11 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
     const missingResults = noBlockingResultFiles ?? noResultFiles;
 
     const failOverall =
-        lintErrors > 0 || numFailed > 0 || blockingDefinitionErrors.length > 0 || missingResults;
+        lintErrors > 0 ||
+        numFailed > 0 ||
+        blockingDefinitionErrors.length > 0 ||
+        missingResults ||
+        missingBlocking.length > 0;
 
     const budget = new Budget(budgetOptions.totalBytes);
     let truncated = false;
@@ -280,6 +293,7 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
     if (numFailed > 0) statsParts.push(`**${numFailed}** with issues`);
     if (numAllowedFailures > 0)
         statsParts.push(`**${numAllowedFailures}** with issues on legs allowed to fail`);
+    if (missingProfiles.length > 0) statsParts.push(`**${missingProfiles.length}** legs missing`);
     if (definitionErrors.length > 0) statsParts.push(`**${definitionErrors.length}** definition errors`);
     if (lint.length > 0) statsParts.push(`**${lint.length}** lint messages`);
 
@@ -294,6 +308,23 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
         budget.forceAppend('> ⚠️ **No test result files were found.** This usually means the test jobs failed before writing results or the artifact upload/download broke.\n\n');
     } else if (missingResults) {
         budget.forceAppend('> ⚠️ **Only legs allowed to fail reported results.** Every leg that must pass failed before writing results, or its artifact upload/download broke.\n\n');
+    }
+
+    // A leg that reported nothing is invisible in the tables below, so without this
+    // a partial set of results renders as a complete, passing report.
+    if (missingProfiles.length > 0) {
+        const list = (ps: ExpectedProfile[]): string => ps.map(p => '`' + p.name + '`').join(', ');
+        if (missingBlocking.length > 0) {
+            budget.forceAppend(
+                `> ❌ **${missingBlocking.length} leg${missingBlocking.length === 1 ? '' : 's'} that must pass reported no results:** ${list(missingBlocking)}. ` +
+                    'The leg died before writing results, or its artifact expired or failed to upload.\n\n'
+            );
+        }
+        if (missingAllowed.length > 0) {
+            budget.forceAppend(
+                `> ⚠️ **${missingAllowed.length} leg${missingAllowed.length === 1 ? '' : 's'} allowed to fail reported no results:** ${list(missingAllowed)}.\n\n`
+            );
+        }
     }
 
     // ── Definition errors ─────────────────────────────────────────────────
@@ -454,6 +485,8 @@ export function renderSummary(input: RenderInput, budgetOptions: BudgetOptions =
             numBlockingDefinitionErrors: blockingDefinitionErrors.length,
             numLintErrors: lintErrors,
             noResultFiles: missingResults,
+            missingProfileNames: [...missingBlocking, ...missingAllowed].map(p => p.name),
+            numMissingBlockingProfiles: missingBlocking.length,
         },
     };
 }

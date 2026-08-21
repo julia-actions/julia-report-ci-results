@@ -61,6 +61,14 @@ export interface ProcessOutput {
     output: string;
 }
 
+// A matrix leg the caller says this run should have heard from, so that a leg
+// whose results never arrived is reported rather than silently left out of the
+// summary. The name must match the profile name the leg records in its results.
+export interface ExpectedProfile {
+    name: string;
+    allowFailure: boolean;
+}
+
 // Flattened lint diagnostic derived from julialint's SARIF output.
 
 export type LintLevel = 'error' | 'warning' | 'note';

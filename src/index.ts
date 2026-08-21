@@ -3,7 +3,15 @@ import * as path from 'path';
 import * as core from '@actions/core';
 import { PathContext } from './paths';
 import { parseSarifLog } from './sarif';
-import { ResultFile, groupTestitems, mergeResults, normalizeDefinitionErrors, parseTestrunResult } from './testResults';
+import {
+    ResultFile,
+    groupTestitems,
+    mergeResults,
+    normalizeDefinitionErrors,
+    observedProfileNames,
+    parseExpectedProfiles,
+    parseTestrunResult,
+} from './testResults';
 import { renderSummary } from './render';
 import { uploadProcessLogs } from './artifacts';
 import { LintDiagnostic } from './types';
@@ -47,6 +55,7 @@ async function run(): Promise<void> {
     const failOnTestFailures = getBoolInput('fail-on-test-failures', true);
     const failOnLintErrors = getBoolInput('fail-on-lint-errors', true);
     const processLogsRetentionDays = getIntInput('process-logs-retention-days');
+    const expectedProfiles = parseExpectedProfiles(core.getInput('expected-profiles'));
 
     const ctx: PathContext = {
         workspace: process.env.GITHUB_WORKSPACE,
@@ -78,6 +87,12 @@ async function run(): Promise<void> {
     }
     const results = mergeResults(parts);
 
+    // A leg whose artifact never arrived contributes no test items at all, so it would
+    // otherwise just be absent from the report rather than reported as absent. This is
+    // what keeps a partial re-run from rendering as a complete, passing run.
+    const observed = observedProfileNames(parts);
+    const missingProfiles = expectedProfiles.filter(p => !observed.has(p.name));
+
     let lint: LintDiagnostic[] = [];
     if (lintResultsPath !== '') {
         for (const file of listFiles(lintResultsPath, ['.sarif', '.sarif.json'])) {
@@ -96,6 +111,7 @@ async function run(): Promise<void> {
         lint,
         noResultFiles: parts.length === 0,
         noBlockingResultFiles: numBlockingFiles === 0,
+        missingProfiles,
         ctx,
     });
 
@@ -108,13 +124,14 @@ async function run(): Promise<void> {
     core.setOutput('allowed-failure-count', stats.numAllowedFailures);
     core.setOutput('definition-error-count', stats.numDefinitionErrors);
     core.setOutput('lint-error-count', stats.numLintErrors);
+    core.setOutput('missing-profiles', stats.missingProfileNames.join(','));
 
     if (truncated) {
         core.warning('The CI report was truncated to stay under the step-summary size limit.');
     }
 
     const shouldFail =
-        (failOnMissingResults && stats.noResultFiles) ||
+        (failOnMissingResults && (stats.noResultFiles || stats.numMissingBlockingProfiles > 0)) ||
         (failOnTestFailures && (stats.numFailed > 0 || stats.numBlockingDefinitionErrors > 0)) ||
         (failOnLintErrors && stats.numLintErrors > 0);
     if (shouldFail) {

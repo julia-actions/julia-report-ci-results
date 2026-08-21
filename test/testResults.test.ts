@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { ResultFile, deriveFileLabel, groupTestitems, mergeResults, parseTestrunResult } from '../src/testResults';
+import {
+    ResultFile,
+    deriveFileLabel,
+    groupTestitems,
+    mergeResults,
+    observedProfileNames,
+    parseExpectedProfiles,
+    parseTestrunResult,
+} from '../src/testResults';
 import { TestrunResult } from '../src/types';
 
 const linuxUri = 'file:///home/runner/work/MyRepo/MyRepo/test/a.jl';
@@ -130,4 +138,43 @@ test('merge does not mutate the parsed result files', () => {
     const source = resultFixture('Julia rc~x64:ubuntu-latest', 'failed', linuxUri);
     mergeResults([resultFile(source, 'allowfail.json', true)]);
     assert.strictEqual('allowFailure' in source.testitems[0].profiles[0], false);
+});
+
+test('parseExpectedProfiles reads names and defaults allowFailure to false', () => {
+    assert.deepStrictEqual(
+        parseExpectedProfiles('[{"name":"Julia 1.11~x64:ubuntu-latest","allowFailure":false},{"name":"Julia rc~x64:windows-latest","allowFailure":true},{"name":"Julia lts~x86:ubuntu-latest"}]'),
+        [
+            { name: 'Julia 1.11~x64:ubuntu-latest', allowFailure: false },
+            { name: 'Julia rc~x64:windows-latest', allowFailure: true },
+            { name: 'Julia lts~x86:ubuntu-latest', allowFailure: false },
+        ]
+    );
+});
+
+test('parseExpectedProfiles treats an absent input as "do not check"', () => {
+    assert.deepStrictEqual(parseExpectedProfiles(''), []);
+    assert.deepStrictEqual(parseExpectedProfiles('  \t\n  '), []);
+    assert.deepStrictEqual(parseExpectedProfiles('[]'), []);
+});
+
+test('parseExpectedProfiles rejects malformed input rather than silently checking nothing', () => {
+    assert.throws(() => parseExpectedProfiles('{'), /not valid JSON/);
+    assert.throws(() => parseExpectedProfiles('{"name":"a"}'), /must be a JSON array/);
+    assert.throws(() => parseExpectedProfiles('[{"allowFailure":true}]'), /entry 0 has no non-empty "name"/);
+    assert.throws(() => parseExpectedProfiles('[{"name":"  "}]'), /entry 0 has no non-empty "name"/);
+    assert.throws(() => parseExpectedProfiles('[{"name":"a"},{"name":"b","allowFailure":"yes"}]'), /entry 1 has a non-boolean/);
+});
+
+test('observedProfileNames collects every leg that reported, across both buckets', () => {
+    const blocking = resultFixture('Julia 1.11~x64:ubuntu-latest', 'passed', linuxUri);
+    const allowed = resultFixture('Julia rc~x64:windows-latest', 'failed', windowsUri);
+    assert.deepStrictEqual(
+        [...observedProfileNames([resultFile(blocking, 'b.json'), resultFile(allowed, 'a.json', true)])].sort(),
+        ['Julia 1.11~x64:ubuntu-latest', 'Julia rc~x64:windows-latest']
+    );
+});
+
+test('observedProfileNames ignores a leg that wrote a file but ran nothing', () => {
+    const empty: TestrunResult = { definition_errors: [], testitems: [], process_outputs: {} };
+    assert.deepStrictEqual([...observedProfileNames([resultFile(empty, 'crashed-leg.json')])], []);
 });

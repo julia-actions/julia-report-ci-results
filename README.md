@@ -90,10 +90,11 @@ report-results:
 | `results-path` | yes | | Directory containing test-result `*.json` files. Files that are not test-result JSONs are skipped with a warning. |
 | `lint-results-path` | no | | Directory containing lint `*.sarif` file(s). May be missing or empty when lint was skipped. |
 | `allowed-failure-results-path` | no | | Directory containing test-result `*.json` files from legs allowed to fail. May be missing or empty. |
-| `fail-on-missing-results` | no | `true` | Fail the step when no test-result files are found in `results-path`. Files in `allowed-failure-results-path` do not count. |
+| `fail-on-missing-results` | no | `true` | Fail the step when no test-result files are found in `results-path`, or when a leg listed in `expected-profiles` that is not allowed to fail reported nothing. Files in `allowed-failure-results-path` do not count. |
 | `fail-on-test-failures` | no | `true` | Fail the step when there are failing test items or test definition errors. |
 | `fail-on-lint-errors` | no | `true` | Fail the step when there are error-severity lint results. |
 | `process-logs-retention-days` | no | | Retention in days for the uploaded `test-process-logs` artifact. Empty uses the repository default. |
+| `expected-profiles` | no | | JSON array of `{"name": <profile name>, "allowFailure": <bool>}` naming the legs this run should have heard from. A leg that reported nothing is then called out in the summary. Empty disables the check. See [Missing legs](#missing-legs). |
 
 ## Outputs
 
@@ -106,6 +107,38 @@ report-results:
 | `definition-error-count` | Number of test definition errors. |
 | `lint-error-count` | Number of error-severity lint results. |
 | `process-logs-artifact-id` | Id of the uploaded `test-process-logs` artifact, or empty when nothing was uploaded. |
+| `missing-profiles` | Comma-separated names of expected profiles that reported no results, blocking ones first. Empty when `expected-profiles` was not set. |
+
+## Missing legs
+
+The action reads whatever result files it is given; on its own it cannot tell a run
+with three legs from a six-leg run whose other three artifacts never arrived. Without
+help it only notices the all-or-nothing case — *zero* blocking result files — so a
+partial set renders as a complete, passing report.
+
+`expected-profiles` closes that gap. Pass the legs the run should have heard from and
+any that reported nothing are listed in the summary; missing blocking legs also fail
+the step under `fail-on-missing-results`, while missing legs marked `allowFailure` are
+reported with a warning only. Each `name` must match the `profile-name` that leg was
+run with, which is the name it records in its results.
+
+The caller builds the list, so the profile-name format stays wherever the legs are
+defined rather than being duplicated here. In testitem-workflow it comes from
+`julia-compute-test-matrix`'s matrix:
+
+```yaml
+- id: expected-profiles
+  shell: bash
+  env:
+    TEST_MATRIX: ${{ needs.compute-test-matrix.outputs.test-matrix }}
+  run: |
+    profiles=$(jq -c '[.[] | {name: "Julia \(.["juliaup-channel"]):\(.os)", allowFailure: (.["allow-failure"] == true)}]' <<< "$TEST_MATRIX")
+    echo "profiles=$profiles" >> "$GITHUB_OUTPUT"
+```
+
+This is what makes GitHub's **Re-run failed jobs** safe to use: a partial re-run
+re-runs only the failed legs, so if any other leg's artifact has expired or was
+deleted, the report says so instead of quietly reporting on a subset.
 
 ## Legs allowed to fail
 

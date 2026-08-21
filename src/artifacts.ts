@@ -45,6 +45,15 @@ export async function uploadProcessLogs(
             files.push(file);
         }
         const client = new DefaultArtifactClient();
+        // Artifact names are unique per run, not per run attempt, so on a re-run this
+        // upload would collide with the previous attempt's copy and the summary would
+        // silently lose every log link. Delete first, which is what `overwrite: true`
+        // on actions/upload-artifact does; the JS client has no such option.
+        try {
+            await client.deleteArtifact(LOGS_ARTIFACT_NAME);
+        } catch {
+            // Nothing to replace — the normal first-attempt case.
+        }
         const response = await client.uploadArtifact(
             LOGS_ARTIFACT_NAME,
             files,
